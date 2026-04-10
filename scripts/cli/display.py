@@ -35,10 +35,12 @@ def show_warning(msg: str):
 
 
 def show_json(data: dict):
-    """Affiche un dict en JSON coloré."""
-    console.print(Syntax(
-        json.dumps(data, indent=2, ensure_ascii=False), "json"
-    ))
+    """Affiche un dict en JSON brut sur stdout (machine-readable, pipeable).
+
+    Utilise print() au lieu de Rich pour éviter la pollution ANSI
+    quand la sortie est redirigée ou pipée vers un autre processus.
+    """
+    print(json.dumps(data, indent=2, ensure_ascii=False))
 
 
 # =============================================================================
@@ -358,6 +360,80 @@ def show_consolidation_result(result: dict):
     ))
 
 
+def show_bank_compact_result(result: dict):
+    """Affiche le résultat d'un bank_compact."""
+    dry_run = result.get("dry_run", True)
+    mode_label = "[yellow]DRY-RUN (aucune modification)[/yellow]" if dry_run else "[green]APPLIQUÉ[/green]"
+    files_over = result.get("files_over_limit", 0)
+    border = "yellow" if dry_run else ("green" if files_over == 0 else "cyan")
+
+    size_before = result.get("total_size_before", 0)
+    size_after = result.get("total_size_after", 0)
+    reduction = ""
+    if not dry_run and size_before > 0 and size_after < size_before:
+        pct = round((1 - size_after / size_before) * 100)
+        reduction = f"\n[bold]Réduction :[/bold] [green]-{pct}%[/green] ({size_before} → {size_after} bytes)"
+
+    console.print(Panel.fit(
+        f"[bold]Espace     :[/bold] [cyan]{result.get('space_id', '?')}[/cyan]\n"
+        f"[bold]Mode       :[/bold] {mode_label}\n"
+        f"[bold]Fichiers   :[/bold] {result.get('files_total', 0)} total\n"
+        f"[bold]Surdimensionnés :[/bold] {files_over}\n"
+        f"[bold]Taille bank :[/bold] {size_before} bytes"
+        + reduction,
+        title="📦 Bank Compact", border_style=border,
+    ))
+
+    # Tableau des fichiers avec détails
+    files = result.get("files", [])
+    if files:
+        table = Table(title="Détails par fichier", show_header=True)
+        table.add_column("Fichier", style="cyan bold")
+        table.add_column("Taille", justify="right")
+        table.add_column("Limite", justify="right")
+        table.add_column("Ratio", justify="right")
+        table.add_column("Statut")
+
+        for f in files:
+            size = f.get("size", 0)
+            max_size = f.get("max_size", 0)
+            ratio = f.get("ratio", 0)
+            over = f.get("over_limit", False)
+
+            # Indicateur de ratio coloré
+            if ratio > 1.5:
+                ratio_str = f"[red bold]{ratio}x[/red bold]"
+            elif ratio > 1.0:
+                ratio_str = f"[yellow]{ratio}x[/yellow]"
+            else:
+                ratio_str = f"[green]{ratio}x[/green]"
+
+            # Statut
+            if not over:
+                status = "✅ OK"
+            elif f.get("compacted_size"):
+                pct = f.get("reduction_pct", 0)
+                status = f"📦 -{pct}% ({f['compacted_size']} bytes)"
+            elif f.get("error"):
+                status = f"[red]❌ {f['error']}[/red]"
+            else:
+                status = "⚠️ à compacter" if dry_run else "⚠️ surdimensionné"
+
+            table.add_row(
+                f.get("filename", "?"),
+                f"{size}",
+                f"{max_size}",
+                ratio_str,
+                status,
+            )
+        console.print(table)
+
+    if files_over == 0:
+        show_success("Tous les fichiers bank sont sous leur limite de taille !")
+    elif dry_run and files_over > 0:
+        show_warning(f"{files_over} fichier(s) surdimensionné(s). Lancez avec --apply pour compacter.")
+
+
 # =============================================================================
 # Admin tokens
 # =============================================================================
@@ -421,6 +497,49 @@ def show_backup_created(result: dict):
         f"{result.get('files_backed_up', 0)} fichiers, "
         f"{result.get('total_size', 0)} octets"
     )
+
+
+def show_backup_all_result(result: dict):
+    """Affiche le résultat d'un backup de tous les espaces."""
+    ok = result.get("spaces_backed_up", 0)
+    failed = result.get("spaces_failed", 0)
+    total = result.get("spaces_total", 0)
+    border = "green" if failed == 0 else "yellow"
+
+    console.print(Panel.fit(
+        f"[bold]Espaces total  :[/bold] {total}\n"
+        f"[bold]Sauvegardés    :[/bold] [green]{ok}[/green]\n"
+        f"[bold]Échoués        :[/bold] {'[red]' + str(failed) + '[/red]' if failed else '0'}",
+        title="💾 Backup ALL", border_style=border,
+    ))
+
+    details = result.get("details", [])
+    if details:
+        table = Table(title="Détails par espace", show_header=True)
+        table.add_column("Space", style="cyan bold")
+        table.add_column("Backup ID", style="dim")
+        table.add_column("Fichiers", justify="right")
+        table.add_column("Taille", justify="right")
+        table.add_column("Statut")
+
+        for d in details:
+            if d.get("status") == "created":
+                table.add_row(
+                    d.get("space_id", "?"),
+                    d.get("backup_id", ""),
+                    str(d.get("files", 0)),
+                    f"{d.get('size', 0)} oct",
+                    "✅",
+                )
+            else:
+                table.add_row(
+                    d.get("space_id", "?"),
+                    "",
+                    "",
+                    "",
+                    f"[red]❌ {d.get('message', '?')}[/red]",
+                )
+        console.print(table)
 
 
 # =============================================================================

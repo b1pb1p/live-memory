@@ -1,6 +1,6 @@
 # 🖥️ Live Memory CLI, Shell & Tests
 
-> Scriptable CLI, interactive shell and test scripts for Live Memory MCP v1.2.0.
+> Scriptable CLI, interactive shell and test scripts for Live Memory MCP v1.4.0.
 
 ---
 
@@ -34,7 +34,10 @@ python scripts/mcp_cli.py token create name -p read,write --email u@ex.com  # Cr
 python scripts/mcp_cli.py token update sha256:a8c5 --email u@ex.com     # Update a token
 python scripts/mcp_cli.py token list                                     # List tokens
 python scripts/mcp_cli.py graph push space             # Push to Graph Memory
-python scripts/mcp_cli.py backup create space          # Create a backup
+python scripts/mcp_cli.py bank compact space            # Analyze oversized files (dry-run)
+python scripts/mcp_cli.py bank compact space --apply    # Compact via LLM (admin)
+python scripts/mcp_cli.py backup create space           # Create a backup
+python scripts/mcp_cli.py backup create --all           # Backup ALL spaces (admin)
 python scripts/mcp_cli.py backup download id           # Download a backup
 python scripts/mcp_cli.py gc --space-id id --confirm   # Garbage Collector
 ```
@@ -138,4 +141,4 @@ scripts/
 
 ---
 
-*Live Memory CLI v1.2.0*
+*Live Memory CLI v1.4.0*

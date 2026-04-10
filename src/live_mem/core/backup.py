@@ -81,6 +81,84 @@ class BackupService:
             "total_size": total_size,
         }
 
+    async def create_all(self, description: str = "") -> dict:
+        """
+        Crée un snapshot de TOUS les espaces (admin only).
+
+        Liste tous les espaces existants et crée un backup pour chacun.
+        Les erreurs sur un espace n'empêchent pas le backup des suivants.
+
+        Args:
+            description: Description commune pour tous les backups
+
+        Returns:
+            {"status": "ok", "spaces_backed_up": N, "spaces_failed": N, "details": [...]}
+        """
+        storage = get_storage()
+
+        # Lister tous les espaces (préfixes de premier niveau avec _meta.json)
+        # On utilise list_prefixes pour trouver les espaces
+        all_prefixes = await storage.list_prefixes("", delimiter="/")
+
+        # Filtrer : garder seulement les espaces réels (pas _backups, _system)
+        space_ids = []
+        for prefix in all_prefixes:
+            sid = prefix.rstrip("/")
+            if sid.startswith("_"):
+                continue
+            # Vérifier que c'est un vrai espace (a un _meta.json)
+            if await storage.exists(f"{sid}/_meta.json"):
+                space_ids.append(sid)
+
+        if not space_ids:
+            return {
+                "status": "ok",
+                "message": "Aucun espace trouvé",
+                "spaces_backed_up": 0,
+                "spaces_failed": 0,
+                "details": [],
+            }
+
+        # Backup chaque espace
+        details = []
+        spaces_ok = 0
+        spaces_failed = 0
+
+        for sid in sorted(space_ids):
+            try:
+                result = await self.create(sid, description)
+                if result.get("status") == "created":
+                    spaces_ok += 1
+                    details.append({
+                        "space_id": sid,
+                        "status": "created",
+                        "backup_id": result.get("backup_id", ""),
+                        "files": result.get("files_backed_up", 0),
+                        "size": result.get("total_size", 0),
+                    })
+                else:
+                    spaces_failed += 1
+                    details.append({
+                        "space_id": sid,
+                        "status": "error",
+                        "message": result.get("message", "?"),
+                    })
+            except Exception as e:
+                spaces_failed += 1
+                details.append({
+                    "space_id": sid,
+                    "status": "error",
+                    "message": str(e),
+                })
+
+        return {
+            "status": "ok",
+            "spaces_total": len(space_ids),
+            "spaces_backed_up": spaces_ok,
+            "spaces_failed": spaces_failed,
+            "details": details,
+        }
+
     async def list_backups(self, space_id: str = "") -> dict:
         """
         Liste les backups disponibles.

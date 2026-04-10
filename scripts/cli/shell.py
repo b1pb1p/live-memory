@@ -22,6 +22,7 @@ from .display import (
     show_space_created, show_space_updated, show_rules_updated, show_space_list, show_space_info, show_rules, show_notes,
     show_bank_list, show_bank_content, show_consolidation_result,
     show_bank_write_result, show_bank_delete_result, show_bank_repair_result,
+    show_bank_compact_result,
     show_graph_connected, show_graph_status, show_graph_push_result, show_graph_disconnected,
     show_token_created, show_token_list,
     show_backup_created, show_backup_list,
@@ -56,6 +57,7 @@ SHELL_COMMANDS = {
     "bank write": "Écrire un fichier bank (bank write <space> <file> -f <path.md>) admin",
     "bank delete": "Supprimer un fichier bank (bank delete <space> <file>) admin",
     "bank repair": "Réparer noms corrompus (bank repair <space> [--apply]) admin",
+    "bank compact": "Compacter fichiers surdimensionnés (bank compact <space> [--apply]) admin",
     "token create": "Créer un token (token create <name> -p <read|read,write|read,write,admin> [--email <email>])",
     "token update": "Modifier un token (token update <hash> --permissions <perms> --space-ids <ids>)",
     "token list": "Lister les tokens",
@@ -66,7 +68,7 @@ SHELL_COMMANDS = {
     "graph push": "Pousser la bank dans le graphe (graph push <space>)",
     "graph status": "Statut connexion Graph Memory (graph status <space>)",
     "graph disconnect": "Déconnecter de Graph Memory (graph disconnect <space>)",
-    "backup create": "Créer un backup (backup create <space>)",
+    "backup create": "Créer un backup (backup create <space> ou backup create --all)",
     "backup list": "Lister les backups",
     "backup restore": "Restaurer (backup restore <id> --confirm)",
     "backup download": "Télécharger un backup (backup download <id>)",
@@ -416,8 +418,19 @@ async def _handle_bank(client, args, json_out):
         })
         (show_json if json_out else show_bank_repair_result)(result) if result.get("status") == "ok" else show_error(result.get("message", "?"))
 
+    elif sub == "compact" and len(args) >= 2:
+        dry_run = "--apply" not in args
+        if dry_run:
+            console.print("[dim]Mode dry-run — analyse sans modification.[/dim]")
+        else:
+            console.print("[dim]Compaction en cours... (peut prendre plusieurs secondes par fichier)[/dim]")
+        result = await client.call_tool("bank_compact", {
+            "space_id": args[1], "dry_run": dry_run,
+        })
+        (show_json if json_out else show_bank_compact_result)(result) if result.get("status") == "ok" else show_error(result.get("message", "?"))
+
     else:
-        show_warning("Usage: bank [list|read|read-all|consolidate|write|delete|repair] ...")
+        show_warning("Usage: bank [list|read|read-all|consolidate|compact|write|delete|repair] ...")
 
 
 # Permissions valides (partagé avec le handler token)
@@ -574,9 +587,19 @@ async def _handle_backup(client, args, json_out):
     """Handler pour les commandes backup."""
     sub = args[0] if args else ""
 
-    if sub == "create" and len(args) >= 2:
-        result = await client.call_tool("backup_create", {"space_id": args[1]})
-        (show_json if json_out else show_backup_created)(result) if result.get("status") == "created" else show_error(result.get("message", "?"))
+    if sub == "create":
+        # Supporter --all pour backup de tous les espaces
+        backup_all = "--all" in args
+        if backup_all:
+            console.print("[dim]Backup de tous les espaces en cours...[/dim]")
+            result = await client.call_tool("backup_create", {"space_id": ""})
+            from .display import show_backup_all_result
+            (show_json if json_out else show_backup_all_result)(result) if result.get("status") == "ok" else show_error(result.get("message", "?"))
+        elif len(args) >= 2:
+            result = await client.call_tool("backup_create", {"space_id": args[1]})
+            (show_json if json_out else show_backup_created)(result) if result.get("status") == "created" else show_error(result.get("message", "?"))
+        else:
+            console.print("[yellow]Usage: backup create <space_id> ou backup create --all[/yellow]")
 
     elif sub == "list":
         result = await client.call_tool("backup_list", {"space_id": args[1] if len(args) >= 2 else ""})

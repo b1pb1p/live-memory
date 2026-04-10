@@ -34,7 +34,7 @@ def register(mcp: FastMCP) -> int:
 
     @mcp.tool()
     async def backup_create(
-        space_id: Annotated[str, Field(description="Identifiant de l'espace à sauvegarder")],
+        space_id: Annotated[str, Field(description="Identifiant de l'espace à sauvegarder (vide = TOUS les espaces, admin requis)")],
         description: Annotated[str, Field(default="", description="Description du backup (optionnel, ex: 'avant migration')")] = "",
     ) -> dict:
         """
@@ -43,26 +43,38 @@ def register(mcp: FastMCP) -> int:
         Copie tous les fichiers (meta, rules, notes, bank, synthesis)
         dans _backups/{space_id}/{timestamp}/.
 
+        Si space_id est vide, crée un backup de TOUS les espaces
+        (permission admin requise). Les erreurs sur un espace
+        n'empêchent pas le backup des suivants.
+
         Args:
-            space_id: Espace à sauvegarder
+            space_id: Espace à sauvegarder (vide = tous, admin requis)
             description: Description du backup (optionnel)
 
         Returns:
             backup_id, nombre de fichiers, taille totale
         """
-        from ..auth.context import check_access, check_write_permission
+        from ..auth.context import check_access, check_write_permission, check_admin_permission
         from ..core.backup import get_backup_service
 
         try:
-            access_err = check_access(space_id)
-            if access_err:
-                return access_err
+            if not space_id:
+                # Backup ALL spaces — admin only
+                admin_err = check_admin_permission()
+                if admin_err:
+                    return admin_err
+                return await get_backup_service().create_all(description)
+            else:
+                # Backup single space — write permission
+                access_err = check_access(space_id)
+                if access_err:
+                    return access_err
 
-            write_err = check_write_permission()
-            if write_err:
-                return write_err
+                write_err = check_write_permission()
+                if write_err:
+                    return write_err
 
-            return await get_backup_service().create(space_id, description)
+                return await get_backup_service().create(space_id, description)
         except Exception as e:
             from ..auth.context import safe_error
             return safe_error(e, "backup")

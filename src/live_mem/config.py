@@ -44,7 +44,8 @@ class Settings(BaseSettings):
     llmaas_api_url: str = ""
     llmaas_api_key: str = ""
     llmaas_model: str = "qwen3-2507:235b"
-    llmaas_max_tokens: int = 100000
+    llmaas_context_window: int = 131072     # Taille totale du context window du modèle (input + output)
+    llmaas_max_tokens: int = 16384          # Max tokens de SORTIE demandés à l'API
     llmaas_temperature: float = 0.3
 
     # ─── Rules par défaut ─────────────────────────────────────
@@ -58,6 +59,13 @@ class Settings(BaseSettings):
     consolidation_timeout: int = 600        # Timeout par appel LLM (secondes)
     consolidation_max_notes: int = 500      # Max notes traitées par consolidation
     consolidation_batch_size: int = 5       # Notes par lot LLM (réponses courtes = moins de drift)
+
+    # ─── Bank Compaction ──────────────────────────────────────
+    # Compaction automatique des fichiers bank avant consolidation
+    # quand le contexte total est trop gros pour le LLM.
+    # Voir DESIGN/live-mem/CONTEXT_COMPACTION.md pour les détails.
+    compact_threshold: float = 0.6          # Ratio input/max_tokens au-delà duquel on compacte (0.6 = 60%)
+    bank_file_max_size: int = 15360         # Taille max universelle pour tout fichier bank (bytes)
 
     # extra="ignore" permet d'avoir des variables dans .env (SITE_ADDRESS, WAF_PORT)
     # qui ne sont pas déclarées dans Settings (utilisées par Docker/Caddy uniquement)

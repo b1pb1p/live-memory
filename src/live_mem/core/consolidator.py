@@ -83,11 +83,19 @@ Tout ce que tu ne touches pas explicitement reste INTACT — c'est le but.
 - Respecte STRICTEMENT la structure définie dans les rules
 - Intègre les nouvelles informations des notes live
 - Préfère append_to_section et replace_section — ce sont les opérations les plus courantes
-- Pour activeContext.md : replace_section le focus, append les éléments récents
-- Pour progress.md : append les nouvelles entrées, NE JAMAIS supprimer l'historique
+- Pour activeContext.md : replace_section le focus, append les éléments récents.
+  ⚠️ NETTOIE ACTIVEMENT : déplace les éléments terminés vers progress.md,
+  supprime les détails de sessions anciennes (> 2 sessions), garde UNIQUEMENT
+  le focus actuel, le travail récent, les prochaines étapes et les décisions actives.
+  Ce fichier doit rester LÉGER (< 8 KB).
+- Pour progress.md : append les nouvelles entrées, NE JAMAIS supprimer l'historique.
+  Résume les entrées anciennes (> 30 jours) en une ligne par jalon.
 - Les headings doivent correspondre EXACTEMENT à ceux du fichier (avec les ## )
 - Si un fichier n'a pas besoin de modification, NE L'INCLUS PAS
-- La synthèse doit être concise mais couvrir les points clés des notes traitées"""
+- La synthèse doit être concise mais couvrir les points clés des notes traitées
+- ⚠️ RÈGLE ANTI-ACCUMULATION : chaque consolidation doit NETTOYER l'obsolète,
+  pas seulement ajouter. Un fichier qui DÉPASSE SA LIMITE DE TAILLE et continue
+  de grossir est un problème — compacte les sections anciennes pour faire de la place."""
 
 
 class ConsolidatorService:
@@ -107,10 +115,14 @@ class ConsolidatorService:
             timeout=settings.consolidation_timeout,
         )
         self._model = settings.llmaas_model
+        self._context_window = settings.llmaas_context_window
         self._max_tokens = settings.llmaas_max_tokens
         self._temperature = settings.llmaas_temperature
         self._max_notes = settings.consolidation_max_notes
         self._batch_size = settings.consolidation_batch_size
+        # Bank compaction settings
+        self._compact_threshold = settings.compact_threshold
+        self._bank_file_max_size = settings.bank_file_max_size
 
     async def consolidate(self, space_id: str, agent: str = "") -> dict:
         """
@@ -154,6 +166,20 @@ class ConsolidatorService:
                 "notes_processed": 0,
                 "message": "No new notes to consolidate",
             }
+
+        # ── Étape 1b : Auto-compact de la bank si trop grosse ──
+        compact_result = await self._compact_bank_if_needed(
+            space_id, inputs["bank_files"], inputs["rules"]
+        )
+        if compact_result["compacted"]:
+            # Relire la bank compactée depuis S3
+            inputs["bank_files"] = await storage.list_and_get(f"{space_id}/bank/")
+            logger.info(
+                "Bank auto-compacted — %d files, %d→%d bytes",
+                compact_result["files_compacted"],
+                compact_result["size_before"],
+                compact_result["size_after"],
+            )
 
         # ── Étape 2 : Découper en lots ────────────────────
         batch_size = self._batch_size
@@ -481,17 +507,53 @@ Retourne un JSON avec cette structure exacte :
         """
         Étape 3 : Appeler le LLM et parser la réponse JSON.
 
+        Calcule dynamiquement max_tokens en sortie pour éviter de dépasser
+        le context window du modèle (input + output ≤ context_window).
+
+        Heuristique : 1 token ≈ 4 caractères. On réserve au minimum
+        8192 tokens pour la sortie (éditions chirurgicales JSON).
+
         Inclut un retry si la réponse n'est pas du JSON valide.
 
         Returns:
             {"status": "ok", "data": {...}, "usage": {...}} ou erreur
         """
+        # ── Calcul dynamique du budget de sortie ──────────────
+        # Estimer les tokens d'input (heuristique 1 token ≈ 4 chars)
+        input_chars = sum(len(m.get("content", "")) for m in messages)
+        estimated_input_tokens = input_chars // 4
+
+        # Budget de sortie :
+        # - Ne doit pas dépasser max_tokens (config : max output demandé à l'API)
+        # - Ne doit pas dépasser context_window - input (sinon le modèle rejette)
+        # - Plancher : 8192 tokens (minimum pour du JSON chirurgical)
+        _MIN_OUTPUT_TOKENS = 8192
+        remaining_in_window = self._context_window - estimated_input_tokens
+        output_budget = max(_MIN_OUTPUT_TOKENS, min(self._max_tokens, remaining_in_window))
+
+        if estimated_input_tokens > self._context_window * 0.8:
+            logger.warning(
+                "LLM input très large : ~%d tokens estimés "
+                "(context_window=%d, max_tokens=%d). "
+                "Budget sortie réduit à %d tokens. "
+                "Considérez réduire la taille de la bank.",
+                estimated_input_tokens, self._context_window,
+                self._max_tokens, output_budget,
+            )
+
+        logger.info(
+            "LLM call — input ~%d tokens, context_window=%d, "
+            "output budget %d tokens (max_tokens=%d)",
+            estimated_input_tokens, self._context_window,
+            output_budget, self._max_tokens,
+        )
+
         for attempt in range(2):  # 1 essai + 1 retry
             try:
                 response = await self._client.chat.completions.create(
                     model=self._model,
                     messages=messages,
-                    max_tokens=self._max_tokens,
+                    max_tokens=output_budget,
                     temperature=self._temperature,
                 )
 
@@ -922,6 +984,277 @@ CONSIGNE : Fusionne ces versions en UNE SEULE version cohérente.
             }
         except Exception as e:
             return {"status": "error", "message": str(e)}
+
+    # ─────────────────────────────────────────────────────────
+    # Bank Compaction
+    # ─────────────────────────────────────────────────────────
+
+    def _get_max_size_for_file(self, filename: str) -> int:
+        """Retourne la taille max autorisée pour un fichier bank.
+
+        Limite universelle unique — les noms de fichiers dépendent des
+        rules de chaque espace et ne sont pas contrôlés par le serveur.
+        """
+        return self._bank_file_max_size
+
+    async def _compact_bank_if_needed(
+        self, space_id: str, bank_files: list[dict], rules: str
+    ) -> dict:
+        """
+        Auto-compact de la bank avant consolidation.
+
+        Vérifie si le prompt total (bank + notes estimées) risque de
+        dépasser le seuil configuré. Si oui, compacte chaque fichier
+        bank dépassant sa taille max via un appel LLM dédié.
+
+        Inspiré de l'autoCompact de Claude Code — voir CONTEXT_COMPACTION.md.
+
+        Args:
+            space_id: Identifiant de l'espace
+            bank_files: Liste des fichiers bank actuels
+            rules: Rules de l'espace (pour le contexte du LLM)
+
+        Returns:
+            Dict avec compacted (bool), files_compacted, size_before, size_after
+        """
+        storage = get_storage()
+
+        # Estimer la taille totale de la bank
+        total_bank_size = sum(len(bf.get("content", "")) for bf in bank_files)
+        estimated_bank_tokens = total_bank_size // 4
+
+        # Vérifier si la compaction est nécessaire
+        # Seuil : la bank seule consomme déjà > compact_threshold du budget
+        if estimated_bank_tokens <= self._max_tokens * self._compact_threshold:
+            logger.debug(
+                "Bank size OK — %d bytes (~%d tokens), threshold %.0f%% of %d",
+                total_bank_size, estimated_bank_tokens,
+                self._compact_threshold * 100, self._max_tokens,
+            )
+            return {"compacted": False, "files_compacted": 0,
+                    "size_before": total_bank_size, "size_after": total_bank_size}
+
+        logger.warning(
+            "COMPACT — Bank trop grosse : %d bytes (~%d tokens, "
+            "seuil=%.0f%% de %d). Compaction en cours...",
+            total_bank_size, estimated_bank_tokens,
+            self._compact_threshold * 100, self._max_tokens,
+        )
+
+        # Identifier les fichiers à compacter (ceux qui dépassent leur limite)
+        files_compacted = 0
+        size_before = total_bank_size
+        size_after = 0
+
+        for bf in bank_files:
+            raw_key = bf["key"]
+            raw_relpath = bank_relpath(raw_key, space_id)
+            filename = _sanitize_filename(raw_relpath)
+            content = bf.get("content", "")
+            file_size = len(content)
+            max_size = self._get_max_size_for_file(filename)
+
+            if file_size <= max_size:
+                size_after += file_size
+                continue
+
+            # Ce fichier doit être compacté
+            logger.info(
+                "COMPACT %s — %d bytes (max %d), compaction via LLM...",
+                filename, file_size, max_size,
+            )
+
+            compacted = await self._compact_single_file(
+                filename, content, max_size, rules
+            )
+
+            if compacted is not None and len(compacted) < file_size:
+                # Écrire le fichier compacté sur S3
+                await storage.put(f"{space_id}/bank/{filename}", compacted)
+                files_compacted += 1
+                size_after += len(compacted)
+                logger.info(
+                    "COMPACT %s — %d → %d bytes (-%d%%)",
+                    filename, file_size, len(compacted),
+                    round((1 - len(compacted) / file_size) * 100),
+                )
+            else:
+                # Compaction échouée ou pas de réduction → garder l'original
+                size_after += file_size
+                logger.warning(
+                    "COMPACT %s — échec ou pas de réduction, fichier conservé",
+                    filename,
+                )
+
+        return {
+            "compacted": files_compacted > 0,
+            "files_compacted": files_compacted,
+            "size_before": size_before,
+            "size_after": size_after,
+        }
+
+    async def _compact_single_file(
+        self, filename: str, content: str, max_size: int, rules: str
+    ) -> str | None:
+        """
+        Compacte un seul fichier bank via un appel LLM dédié.
+
+        Le LLM reçoit le contenu actuel et doit le résumer/nettoyer
+        pour le ramener sous la taille cible, tout en conservant
+        les informations structurantes.
+
+        Args:
+            filename: Nom du fichier (pour adapter les instructions)
+            content: Contenu Markdown actuel
+            max_size: Taille cible en bytes
+            rules: Rules de l'espace (contexte)
+
+        Returns:
+            Contenu compacté, ou None si l'appel LLM échoue
+        """
+        # Instructions de compaction génériques — les rules de l'espace
+        # définissent la sémantique de chaque fichier, pas le serveur.
+        specific = (
+            "Synthétise le contenu en gardant la structure des sections.\n"
+            "- Fusionne les informations redondantes\n"
+            "- Supprime les détails obsolètes ou trop granulaires\n"
+            "- Conserve les décisions architecturales et les informations structurantes\n"
+            "- Résume les entrées anciennes en une ligne par jalon\n"
+            "- Réfère-toi aux RULES DE RÉFÉRENCE ci-dessus pour comprendre le rôle de ce fichier"
+        )
+
+        prompt = f"""Tu reçois un fichier bank "{filename}" qui fait {len(content)} bytes
+(limite : {max_size} bytes). Tu dois le COMPACTER pour le ramener sous cette limite.
+
+=== RULES DE RÉFÉRENCE ===
+{rules[:2000]}
+
+=== INSTRUCTIONS SPÉCIFIQUES ===
+{specific}
+
+=== RÈGLES DE COMPACTION ===
+- Garde le heading principal (# titre) et la structure des sections (##, ###)
+- Résume les blocs redondants ou trop détaillés
+- Supprime les éléments terminés/obsolètes
+- Fusionne les entrées similaires
+- Conserve les dates des jalons importants
+- NE PERDS AUCUNE information structurante (décisions, architecture, stack)
+- Objectif : ramener SOUS {max_size} bytes
+
+=== CONTENU ACTUEL ===
+{content}
+
+Retourne UNIQUEMENT le contenu compacté (Markdown pur, pas de JSON, pas de balises, pas d'explication)."""
+
+        try:
+            # Estimer le budget de sortie : on veut ~max_size bytes en sortie
+            # + marge pour le formatting. Le contenu max_size / 4 ≈ tokens cibles.
+            output_tokens = max(4096, max_size // 3)
+
+            response = await self._client.chat.completions.create(
+                model=self._model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=output_tokens,
+                temperature=0.2,  # Basse température pour la compaction
+            )
+
+            compacted = response.choices[0].message.content or ""
+
+            # Nettoyer : retirer les blocs <think> et les backticks
+            compacted = re.sub(r"<think>.*?</think>", "", compacted, flags=re.DOTALL)
+            compacted = re.sub(r"^```(?:markdown)?\s*", "", compacted.strip())
+            compacted = re.sub(r"\s*```$", "", compacted.strip())
+
+            return compacted
+
+        except Exception as e:
+            logger.error("COMPACT %s FAILED: %s", filename, str(e))
+            return None
+
+    async def compact_bank(self, space_id: str, dry_run: bool = True) -> dict:
+        """
+        Compaction manuelle de la bank d'un espace (outil MCP standalone).
+
+        En mode dry_run, rapporte les fichiers à compacter et leurs tailles
+        sans modifier quoi que ce soit.
+
+        Args:
+            space_id: Identifiant de l'espace
+            dry_run: True = scan seul, False = compaction effective
+
+        Returns:
+            Rapport de compaction avec détails par fichier
+        """
+        storage = get_storage()
+
+        # Vérifier l'existence de l'espace
+        meta = await storage.get_json(f"{space_id}/_meta.json")
+        if meta is None:
+            return {"status": "error", "message": f"Espace '{space_id}' introuvable"}
+
+        # Lire la bank et les rules
+        bank_files = await storage.list_and_get(f"{space_id}/bank/")
+        rules = await storage.get(f"{space_id}/_rules.md") or ""
+
+        # Analyser chaque fichier
+        file_reports = []
+        total_before = 0
+        total_after = 0
+        files_over_limit = 0
+
+        for bf in bank_files:
+            raw_relpath = bank_relpath(bf["key"], space_id)
+            filename = _sanitize_filename(raw_relpath)
+            content = bf.get("content", "")
+            file_size = len(content)
+            max_size = self._get_max_size_for_file(filename)
+            over = file_size > max_size
+
+            total_before += file_size
+
+            report = {
+                "filename": filename,
+                "size": file_size,
+                "max_size": max_size,
+                "over_limit": over,
+                "ratio": round(file_size / max_size, 2) if max_size > 0 else 0,
+            }
+
+            if over:
+                files_over_limit += 1
+                if not dry_run:
+                    # Compacter effectivement
+                    compacted = await self._compact_single_file(
+                        filename, content, max_size, rules
+                    )
+                    if compacted is not None and len(compacted) < file_size:
+                        await storage.put(f"{space_id}/bank/{filename}", compacted)
+                        report["compacted_size"] = len(compacted)
+                        report["reduction_pct"] = round(
+                            (1 - len(compacted) / file_size) * 100
+                        )
+                        total_after += len(compacted)
+                    else:
+                        report["compacted_size"] = file_size
+                        report["error"] = "compaction failed or no reduction"
+                        total_after += file_size
+                else:
+                    total_after += file_size
+            else:
+                total_after += file_size
+
+            file_reports.append(report)
+
+        return {
+            "status": "ok",
+            "space_id": space_id,
+            "dry_run": dry_run,
+            "files_total": len(bank_files),
+            "files_over_limit": files_over_limit,
+            "total_size_before": total_before,
+            "total_size_after": total_after if not dry_run else total_before,
+            "files": file_reports,
+        }
 
 
 # ─────────────────────────────────────────────────────────────

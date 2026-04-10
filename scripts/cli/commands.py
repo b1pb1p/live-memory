@@ -385,6 +385,34 @@ def bank_repair_cmd(ctx, space_id, apply, jflag):
     }, show_bank_repair_result, jflag)
 
 
+@bank_grp.command("compact")
+@click.argument("space_id")
+@click.option("--apply", is_flag=True, help="Compacter effectivement (sinon dry-run)")
+@click.option("--json", "-j", "jflag", is_flag=True)
+@click.pass_context
+def bank_compact_cmd(ctx, space_id, apply, jflag):
+    """📦 Compacter les fichiers bank surdimensionnés via LLM (admin).
+
+    \b
+    Analyse chaque fichier et compare sa taille à la limite configurée
+    (activeContext.md: 8KB, progress.md: 20KB, autres: 15KB).
+    Les fichiers trop gros sont résumés/nettoyés par le LLM.
+
+    \b
+    Exemples :
+      bank compact mon-projet              # Scan seul (dry-run)
+      bank compact mon-projet --apply      # Compaction effective
+    """
+    if not apply:
+        console.print("[dim]Mode dry-run — analyse sans modification.[/dim]")
+    else:
+        console.print("[dim]Compaction en cours... (peut prendre plusieurs secondes par fichier)[/dim]")
+    from .display import show_bank_compact_result
+    _run_tool(ctx, "bank_compact", {
+        "space_id": space_id, "dry_run": not apply,
+    }, show_bank_compact_result, jflag)
+
+
 # ─────────────────────────────────────────────────────────────
 # Token (sous-groupe)
 # ─────────────────────────────────────────────────────────────
@@ -520,15 +548,31 @@ def backup_grp():
 
 
 @backup_grp.command("create")
-@click.argument("space_id")
+@click.argument("space_id", default="")
+@click.option("--all", "backup_all", is_flag=True, help="Backup TOUS les espaces (admin requis)")
 @click.option("--description", "-d", default="")
 @click.option("--json", "-j", "jflag", is_flag=True)
 @click.pass_context
-def backup_create_cmd(ctx, space_id, description, jflag):
-    """Créer un backup."""
+def backup_create_cmd(ctx, space_id, backup_all, description, jflag):
+    """Créer un backup (--all pour tous les espaces, admin requis).
+
+    \b
+    Exemples :
+      backup create mon-projet                # Un seul espace
+      backup create --all                     # TOUS les espaces (admin)
+      backup create --all -d "avant migration"
+    """
+    if backup_all:
+        space_id = ""
+        console.print("[dim]Backup de tous les espaces en cours...[/dim]")
+    elif not space_id:
+        show_error("Space ID requis, ou utilisez --all pour tous les espaces.")
+        return
+    from .display import show_backup_all_result
+    on_success = show_backup_all_result if not space_id else show_backup_created
     _run_tool(ctx, "backup_create", {
         "space_id": space_id, "description": description,
-    }, show_backup_created, jflag)
+    }, on_success, jflag)
 
 
 @backup_grp.command("list")

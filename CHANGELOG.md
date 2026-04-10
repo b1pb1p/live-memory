@@ -5,6 +5,34 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
 ---
 
+## [1.4.0] — 2026-04-11
+
+### Ajouté — Bank Compaction (auto-compaction + outil MCP `bank_compact`)
+
+#### Outil MCP `bank_compact` (39ème outil, admin only)
+Expose la mécanique de compaction (implémentée dans le consolidateur depuis v1.4.0-beta) comme outil MCP autonome. Analyse chaque fichier bank et compare sa taille à la limite configurée (`activeContext.md`: 8KB, `progress.md`: 20KB, autres: 15KB).
+
+- Mode **dry-run** (par défaut) : rapporte les fichiers surdimensionnés et leur ratio, sans modification.
+- Mode **apply** : compacte effectivement via appel LLM dédié, protégé par le lock de consolidation.
+- Permission **admin** requise (cohérent avec `bank_write` et `bank_repair` qui modifient la bank directement).
+- **CLI Click** : `bank compact <space_id> [--apply] [--json]`.
+- **Shell interactif** : `bank compact <space> [--apply]` avec autocomplétion.
+- **Affichage Rich** (`show_bank_compact_result`) : panel résumé + tableau détaillé par fichier (taille, limite, ratio coloré vert/jaune/rouge, statut de compaction avec % de réduction).
+- Catégorie Bank : 7 → **8 outils MCP**.
+
+#### Auto-compaction intégrée au pipeline de consolidation
+- Déclenchement automatique si la bank dépasse `compact_threshold` (60%) du `max_tokens` avant consolidation.
+- Méthode publique `compact_bank(space_id, dry_run)` dans `ConsolidatorService`.
+- 5 nouveaux paramètres de configuration : `compact_threshold`, `bank_file_max_size`, `bank_active_context_max_size`, `bank_progress_max_size`.
+- **Budget de sortie dynamique** (`_call_llm`) : `output_budget = max(8192, context_window - estimated_input_tokens)` — évite les dépassements de context window.
+- **SYSTEM_PROMPT anti-accumulation** : instructions explicites pour nettoyer l'obsolète et résumer les sections anciennes.
+- Tests automatisés : `scripts/test_bank_compact.py` — 20/20 PASS.
+
+### Corrigé
+- **Bug CLI `--json` : ANSI pollution** — `show_json()` utilisait `Rich.Syntax` qui injectait des codes ANSI dans le JSON, rendant la sortie `--json` non-parseable quand redirigée ou pipée. Corrigé par un `print(json.dumps(...))` brut sur stdout. Le JSON est désormais machine-readable et pipeable (`| jq`, `| python -c "import json..."`, etc.).
+
+---
+
 ## [1.3.1] — 2026-04-01
 
 ### Corrigé

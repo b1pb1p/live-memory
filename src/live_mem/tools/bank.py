@@ -1,15 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-Outils MCP — Catégorie Bank (7 outils).
+Outils MCP — Catégorie Bank (8 outils).
 
-Memory Bank consolidée : lire, lister, consolider via LLM, réparer,
-écrire et supprimer manuellement.
+Memory Bank consolidée : lire, lister, consolider via LLM, compacter,
+réparer, écrire et supprimer manuellement.
 
 Permissions :
     - bank_read        🔑 (read)  — Lit un fichier bank spécifique
     - bank_read_all    🔑 (read)  — Lit toute la bank (démarrage agent)
     - bank_list        🔑 (read)  — Liste les fichiers bank (sans contenu)
     - bank_consolidate ✏️ (write) — Déclenche la consolidation LLM
+    - bank_compact     👑 (admin) — Compacte les fichiers bank surdimensionnés via LLM
     - bank_repair      👑 (admin) — Répare les noms de fichiers corrompus par le LLM
     - bank_write       👑 (admin) — Écrit/remplace un fichier bank directement
     - bank_delete      👑 (admin) — Supprime un fichier bank
@@ -29,13 +30,13 @@ from pydantic import Field
 
 def register(mcp: FastMCP) -> int:
     """
-    Enregistre les 7 outils bank sur l'instance MCP.
+    Enregistre les 8 outils bank sur l'instance MCP.
 
     Args:
         mcp: Instance FastMCP
 
     Returns:
-        Nombre d'outils enregistrés (7)
+        Nombre d'outils enregistrés (8)
     """
 
     @mcp.tool()
@@ -670,4 +671,70 @@ def register(mcp: FastMCP) -> int:
             from ..auth.context import safe_error
             return safe_error(e, "bank")
 
-    return 7  # Nombre d'outils enregistrés
+    @mcp.tool()
+    async def bank_compact(
+        space_id: Annotated[str, Field(description="Identifiant de l'espace à compacter")],
+        dry_run: Annotated[bool, Field(default=True, description="True = scan seul (rapport sans modification), False = compaction effective via LLM")] = True,
+    ) -> dict:
+        """
+        Compacte les fichiers bank surdimensionnés via LLM (admin).
+
+        Analyse chaque fichier bank et compare sa taille à la limite
+        configurée (activeContext.md: 8KB, progress.md: 20KB, autres: 15KB).
+        Les fichiers dépassant leur limite sont résumés/nettoyés par le LLM.
+
+        Le LLM applique des règles spécifiques par fichier :
+        - activeContext.md : garde les 2 dernières sessions, supprime l'obsolète
+        - progress.md : résume les entrées > 30 jours en une ligne par jalon
+        - Autres : fusionne les redondances, supprime les détails obsolètes
+
+        ⚠️ Par défaut dry_run=True : scanne et rapporte sans modifier.
+        Passez dry_run=False pour compacter effectivement.
+
+        ⚠️ La compaction est protégée par le lock de consolidation.
+        Si une consolidation est en cours, retourne "conflict".
+
+        Args:
+            space_id: Espace à compacter
+            dry_run: True = scan seul, False = compaction effective
+
+        Returns:
+            Rapport de compaction avec détails par fichier (taille, ratio, réduction)
+        """
+        from ..auth.context import check_access, check_admin_permission
+        from ..core.locks import get_lock_manager
+        from ..core.consolidator import get_consolidator
+
+        try:
+            access_err = check_access(space_id)
+            if access_err:
+                return access_err
+
+            admin_err = check_admin_permission()
+            if admin_err:
+                return admin_err
+
+            # Protéger par le lock de consolidation (la compaction
+            # modifie les fichiers bank — incompatible avec une
+            # consolidation simultanée)
+            if not dry_run:
+                lock = get_lock_manager().consolidation(space_id)
+                if lock.locked():
+                    return {
+                        "status": "conflict",
+                        "message": (
+                            f"Consolidation en cours pour '{space_id}'. "
+                            "Réessayez dans quelques minutes."
+                        ),
+                    }
+                async with lock:
+                    return await get_consolidator().compact_bank(space_id, dry_run=False)
+            else:
+                # Dry-run : pas besoin de lock (lecture seule)
+                return await get_consolidator().compact_bank(space_id, dry_run=True)
+
+        except Exception as e:
+            from ..auth.context import safe_error
+            return safe_error(e, "bank")
+
+    return 8  # Nombre d'outils enregistrés
