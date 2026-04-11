@@ -67,7 +67,7 @@ async def system_health() -> dict:
   "uptime_seconds": 3600,
   "services": {
     "s3": {"status": "ok", "latency_ms": 45},
-    "llmaas": {"status": "ok", "model": "qwen3-2507:235b", "latency_ms": 120}
+    "llmaas": {"status": "ok", "model": "qwen3.5:27b", "latency_ms": 120}
   },
   "spaces_count": 3
 }

@@ -66,7 +66,7 @@ Oui ! `live_read(space_id="mon-projet")` retourne les notes de TOUS les agents. 
 
 ### Comment fonctionne la consolidation ?
 
-1. Le LLM (qwen3-2507:235b) lit les **rules**, la **bank actuelle**, la **synthèse précédente**, et les **notes live**
+1. Le LLM (qwen3.5:27b) lit les **rules**, la **bank actuelle**, la **synthèse précédente**, et les **notes live**
 2. Il produit des fichiers bank mis à jour (Markdown pur)
 3. Les notes consolidées sont **supprimées** de `live/`
 4. Une synthèse résiduelle est sauvegardée

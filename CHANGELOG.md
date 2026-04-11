@@ -5,6 +5,14 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
 ---
 
+## [1.4.1] — 2026-04-11
+
+### Corrigé
+- **Anti-doublon sémantique dans le consolidateur** — Après une compaction, le consolidateur ne reconnaissait pas que les entrées résumées (format court) et les nouvelles notes (format détaillé) décrivaient le même travail. Résultat : doublons massifs dans `progress.md` (ex: "Phase B — LiveMemoryService créé" ET "Session du 10/04 — Phase B COMPLÈTE"). Ajout d'une instruction explicite dans le `SYSTEM_PROMPT` pour détecter les jalons sémantiquement équivalents et enrichir l'existant au lieu de créer de nouvelles sections.
+- **Migration du modèle LLM par défaut** — Remplacement de `qwen3-2507:235b` par `qwen3.5:27b` dans toute la codebase (config, descriptions MCP, documentation). Les descriptions MCP utilisent désormais des références génériques (`LLMAAS_MODEL`) au lieu de noms de modèles en dur.
+
+---
+
 ## [1.4.0] — 2026-04-11
 
 ### Ajouté — Bank Compaction (auto-compaction + outil MCP `bank_compact`)
@@ -253,7 +261,7 @@ Expose la mécanique de compaction (implémentée dans le consolidateur depuis v
 
 ### Corrigé
 
-- **Bug filenames Unicode invisibles** — Le LLM `qwen3-2507:235b` insère parfois des caractères Unicode invisibles dans les noms de fichiers à partir du ~8ème fichier dans les réponses JSON longues, rendant ces fichiers illisibles. Corrigé par la sanitisation systématique + la consolidation par lots qui produit des réponses plus courtes.
+- **Bug filenames Unicode invisibles** — Le LLM `qwen3.5:27b` insère parfois des caractères Unicode invisibles dans les noms de fichiers à partir du ~8ème fichier dans les réponses JSON longues, rendant ces fichiers illisibles. Corrigé par la sanitisation systématique + la consolidation par lots qui produit des réponses plus courtes.
 
 ### Modifié
 

@@ -28,7 +28,7 @@ live-mem      = Mémoire de TRAVAIL (notes live → LLM → Memory Bank)
 
 4. **Multi-agents natif** : Plusieurs agents peuvent écrire simultanément dans le même espace sans conflit (pattern append-only pour les notes live).
 
-5. **LLM intégré** : Le MCP utilise un LLM (qwen3-2507:235b via LLMaaS Cloud Temple) pour la consolidation. Les agents ne peuvent pas écrire directement dans la bank — seul le LLM le fait.
+5. **LLM intégré** : Le MCP utilise un LLM (qwen3.5:27b via LLMaaS Cloud Temple) pour la consolidation. Les agents ne peuvent pas écrire directement dans la bank — seul le LLM le fait.
 
 6. **Pont vers la mémoire long terme** : Le Graph Bridge (`graph_push`) pousse la bank consolidée dans Graph Memory pour capitaliser les connaissances dans un graphe interrogeable.
 
@@ -42,7 +42,7 @@ live-mem      = Mémoire de TRAVAIL (notes live → LLM → Memory Bank)
 | **Input**           | Documents (PDF, DOCX, MD, CSV)  | Notes textuelles des agents                     |
 | **Stockage**        | Neo4j + Qdrant + S3             | **S3 uniquement**                               |
 | **Intelligence**    | Extraction d'entités/relations  | Consolidation & synthèse                        |
-| **LLM utilisé**     | gpt-oss:120b (extraction)       | qwen3-2507:235b (consolidation)                 |
+| **LLM utilisé**     | gpt-oss:120b (extraction)       | qwen3.5:27b (consolidation)                 |
 | **Recherche**       | Hybride Graph + RAG vectoriel   | Lecture directe fichiers + recherche texte      |
 | **Agents**          | 1 agent par requête             | **Multi-agents collaboratifs**                  |
 | **Pont**            | —                               | **Graph Bridge** pousse la bank → graph-memory  |
@@ -120,7 +120,7 @@ live-mem      = Mémoire de TRAVAIL (notes live → LLM → Memory Bank)
 | **WAF**                  | Reverse proxy sécurisé                       | Caddy + Coraza OWASP CRS + Rate Limiting |
 | **MCP Server**           | Serveur MCP Python (35 outils, 7 catégories) | FastMCP + Uvicorn (ASGI)                 |
 | **Storage Service**      | Abstraction S3 (lecture/écriture/listing)    | boto3 hybride SigV2/V4                   |
-| **Consolidator Service** | Synthèse LLM des notes → bank                | AsyncOpenAI (qwen3-2507:235b)            |
+| **Consolidator Service** | Synthèse LLM des notes → bank                | AsyncOpenAI (qwen3.5:27b)            |
 | **Graph Bridge**         | Pont vers Graph Memory (mémoire long terme)  | SDK MCP (streamablehttp_client)          |
 | **Auth Middleware**      | Authentification Bearer Token                | ASGI middleware custom                   |
 | **Token Manager**        | Gestion des tokens (CRUD)                    | JSON sur S3 (`_system/tokens.json`)      |
@@ -396,7 +396,7 @@ S3_REGION_NAME=fr1
 # ─── LLMaaS ───
 LLMAAS_API_URL=https://api.ai.cloud-temple.com/v1
 LLMAAS_API_KEY=your_key
-LLMAAS_MODEL=qwen3-2507:235b
+LLMAAS_MODEL=qwen3.5:27b
 LLMAAS_MAX_TOKENS=100000
 LLMAAS_TEMPERATURE=0.3
 

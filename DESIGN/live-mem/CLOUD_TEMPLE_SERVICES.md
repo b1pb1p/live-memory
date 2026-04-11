@@ -75,7 +75,7 @@ client_v4 = boto3.client('s3', endpoint_url=endpoint, config=config_v4, ...)
 ```env
 LLMAAS_API_URL=https://api.ai.cloud-temple.com/v1
 LLMAAS_API_KEY=your_key
-LLMAAS_MODEL=qwen3-2507:235b
+LLMAAS_MODEL=qwen3.5:27b
 LLMAAS_MAX_TOKENS=100000
 LLMAAS_TEMPERATURE=0.3
 ```
@@ -104,7 +104,7 @@ client = AsyncOpenAI(
 )
 
 response = await client.chat.completions.create(
-    model='qwen3-2507:235b',
+    model='qwen3.5:27b',
     messages=[...],
     max_tokens=100000,
     temperature=0.3,
@@ -117,7 +117,7 @@ response = await client.chat.completions.create(
 
 | Modèle            | Params | Fenêtre     | Usage dans live-mem        |
 | ----------------- | ------ | ----------- | -------------------------- |
-| `qwen3-2507:235b` | 235B   | 100K tokens | Consolidation notes → bank |
+| `qwen3.5:27b` | 235B   | 100K tokens | Consolidation notes → bank |
 
 ---
 
@@ -126,7 +126,7 @@ response = await client.chat.completions.create(
 | Aspect         | graph-memory                                | live-mem                                   |
 | -------------- | ------------------------------------------- | ------------------------------------------ |
 | **S3**         | Stocke documents + backups + graphe export  | Stocke TOUT (notes, bank, tokens, backups) |
-| **LLMaaS**     | Extraction entités/relations (gpt-oss:120b) | Consolidation notes→bank (qwen3-2507:235b) |
+| **LLMaaS**     | Extraction entités/relations (gpt-oss:120b) | Consolidation notes→bank (qwen3.5:27b) |
 | **Neo4j**      | ✅ Graphe de connaissances                  | ❌ Non utilisé                             |
 | **Qdrant**     | ✅ Base vectorielle RAG                     | ❌ Non utilisé                             |
 | **Embeddings** | ✅ bge-m3:567m                              | ❌ Non utilisé                             |

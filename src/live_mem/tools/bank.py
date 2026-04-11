@@ -248,7 +248,7 @@ def register(mcp: FastMCP) -> int:
 
         Le pipeline :
         1. Lit les rules, synthèse, notes live, bank actuelle
-        2. Envoie tout au LLM (qwen3-2507:235b)
+        2. Envoie tout au LLM configuré (LLMAAS_MODEL)
         3. Écrit les fichiers bank mis à jour
         4. Supprime les notes live traitées
         5. Met à jour la synthèse résiduelle
@@ -680,13 +680,13 @@ def register(mcp: FastMCP) -> int:
         Compacte les fichiers bank surdimensionnés via LLM (admin).
 
         Analyse chaque fichier bank et compare sa taille à la limite
-        configurée (activeContext.md: 8KB, progress.md: 20KB, autres: 15KB).
-        Les fichiers dépassant leur limite sont résumés/nettoyés par le LLM.
+        universelle configurée (BANK_FILE_MAX_SIZE, par défaut 15 KB).
+        Les fichiers dépassant cette limite sont résumés/nettoyés par le LLM.
 
-        Le LLM applique des règles spécifiques par fichier :
-        - activeContext.md : garde les 2 dernières sessions, supprime l'obsolète
-        - progress.md : résume les entrées > 30 jours en une ligne par jalon
-        - Autres : fusionne les redondances, supprime les détails obsolètes
+        Le LLM utilise les rules de l'espace pour comprendre le rôle de
+        chaque fichier et applique des règles de compaction adaptées :
+        fusionne les redondances, supprime les détails obsolètes,
+        résume les entrées anciennes en une ligne par jalon.
 
         ⚠️ Par défaut dry_run=True : scanne et rapporte sans modifier.
         Passez dry_run=False pour compacter effectivement.

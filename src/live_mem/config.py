@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     # API OpenAI-compatible. L'URL INCLUT déjà /v1 — ne pas l'ajouter.
     llmaas_api_url: str = ""
     llmaas_api_key: str = ""
-    llmaas_model: str = "qwen3-2507:235b"
+    llmaas_model: str = "qwen3.5:27b"
     llmaas_context_window: int = 131072     # Taille totale du context window du modèle (input + output)
     llmaas_max_tokens: int = 16384          # Max tokens de SORTIE demandés à l'API
     llmaas_temperature: float = 0.3

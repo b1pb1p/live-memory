@@ -2,7 +2,7 @@
 
 > **Shared working memory for collaborative AI agents**
 
-[![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-1.4.1-blue.svg)]()
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)]()
 [![MCP](https://img.shields.io/badge/protocol-MCP-purple.svg)]()
 [![Python](https://img.shields.io/badge/python-3.11+-yellow.svg)]()
@@ -228,21 +228,32 @@ Edit `.env`. All variables are documented in `.env.example`.
 | `S3_SECRET_ACCESS_KEY` | S3 secret key            | `wJal...`                                    |
 | `S3_BUCKET_NAME`       | Bucket name              | `live-mem`                                   |
 | `S3_REGION_NAME`       | S3 region                | `fr1`                                        |
-| `LLMAAS_API_URL`       | LLM API URL (with `/v1`) | `https://api.ai.cloud-temple.com/v1`         |
-| `LLMAAS_API_KEY`       | LLM API key              | `sk-...`                                     |
-| `ADMIN_BOOTSTRAP_KEY`  | Admin bootstrap key      | `my-secret-key-change-me`                    |
+| `LLMAAS_API_URL`       | LLM API URL (must include `/v1`)  | `https://api.ai.cloud-temple.com/v1` |
+| `LLMAAS_API_KEY`       | LLM API key                       | `sk-...`                             |
+| `ADMIN_BOOTSTRAP_KEY`  | Admin bootstrap key (≥ 32 chars)  | `my-secret-key-change-me`           |
 
-### Optional Variables
+### Optional Variables — LLM
+
+The consolidator uses an LLM (OpenAI-compatible API) to transform live notes into structured bank files.
+
+| Variable                  | Default           | Description                     |
+| ------------------------- | ----------------- | ------------------------------- |
+| `LLMAAS_MODEL`            | `qwen3.5:27b` | LLM model name as exposed by the provider |
+| `LLMAAS_CONTEXT_WINDOW`   | `131072`          | TOTAL context window of the model (input + output combined, in tokens). Qwen3 235B = 128K |
+| `LLMAAS_MAX_TOKENS`       | `16384`           | Max OUTPUT tokens per request. The consolidator adjusts dynamically: `output = min(MAX_TOKENS, CONTEXT_WINDOW - input)` |
+| `LLMAAS_TEMPERATURE`      | `0.3`             | LLM creativity (0.0 = deterministic, 1.0 = very creative) |
+
+### Optional Variables — Consolidation and Compaction
 
 | Variable                  | Default           | Description                     |
 | ------------------------- | ----------------- | ------------------------------- |
 | `MCP_SERVER_PORT`         | `8002`            | MCP server listening port       |
-| `MCP_SERVER_DEBUG`        | `false`           | Detailed logs                   |
-| `LLMAAS_MODEL`            | `qwen3-2507:235b` | LLM model for consolidation     |
-| `LLMAAS_MAX_TOKENS`       | `100000`          | Max tokens per LLM call         |
-| `LLMAAS_TEMPERATURE`      | `0.3`             | LLM temperature                 |
-| `CONSOLIDATION_TIMEOUT`   | `600`             | Consolidation timeout (seconds) |
+| `MCP_SERVER_DEBUG`        | `false`           | Detailed logs (full error messages) |
+| `CONSOLIDATION_TIMEOUT`   | `600`             | Timeout per LLM call (seconds)  |
 | `CONSOLIDATION_MAX_NOTES` | `500`             | Max notes per consolidation     |
+| `CONSOLIDATION_BATCH_SIZE`| `5`               | Notes per LLM batch (small = precise, large = faster) |
+| `COMPACT_THRESHOLD`       | `0.6`             | Auto-compaction trigger (0.6 = compact if bank > 60% of budget) |
+| `BANK_FILE_MAX_SIZE`      | `15360`           | Max size per bank file (bytes, 15 KB). Above = compaction candidate |
 
 ---
 

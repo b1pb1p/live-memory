@@ -5,7 +5,7 @@ Service Consolidator — Pipeline LLM pour la consolidation notes → bank.
 C'est le cœur intelligent de Live Memory. Le pipeline :
 1. Collecte : rules + synthèse précédente + notes live + bank actuelle
 2. Prompt : construit le prompt LLM (system + user)
-3. Appel LLM : une seule requête à qwen3-2507:235b, réponse JSON
+3. Appel LLM : une seule requête au modèle configuré (LLMAAS_MODEL), réponse JSON
 4. Application : éditions chirurgicales sur les fichiers bank existants
 5. Écriture : bank files + synthesis + suppression notes + update meta
 
@@ -83,13 +83,23 @@ Tout ce que tu ne touches pas explicitement reste INTACT — c'est le but.
 - Respecte STRICTEMENT la structure définie dans les rules
 - Intègre les nouvelles informations des notes live
 - Préfère append_to_section et replace_section — ce sont les opérations les plus courantes
-- Pour activeContext.md : replace_section le focus, append les éléments récents.
-  ⚠️ NETTOIE ACTIVEMENT : déplace les éléments terminés vers progress.md,
+- Pour les fichiers de CONTEXTE ACTUEL (focus, travail en cours) : replace_section le focus, append les éléments récents.
+  ⚠️ NETTOIE ACTIVEMENT : déplace les éléments terminés vers le fichier de suivi/historique,
   supprime les détails de sessions anciennes (> 2 sessions), garde UNIQUEMENT
   le focus actuel, le travail récent, les prochaines étapes et les décisions actives.
-  Ce fichier doit rester LÉGER (< 8 KB).
-- Pour progress.md : append les nouvelles entrées, NE JAMAIS supprimer l'historique.
+  Ces fichiers doivent rester LÉGERS.
+- Pour les fichiers d'HISTORIQUE/PROGRESSION : append les nouvelles entrées, NE JAMAIS supprimer l'historique.
   Résume les entrées anciennes (> 30 jours) en une ligne par jalon.
+  ⚠️ ANTI-DOUBLON SÉMANTIQUE : avant de créer une NOUVELLE section dans un fichier d'historique,
+  vérifie si un jalon couvrant le MÊME TRAVAIL (même date, même feature/phase) existe
+  déjà dans le fichier, même avec un heading différent ou un format plus court.
+  Exemples de doublons à éviter :
+    - "### Phase B — Service créé (10/04)" ET "### Session du 10/04 — Phase B COMPLÈTE"
+    - "### Phase 4.4x — Fix Mermaid (06/04)" ET "### Session du 06/04 — Fix complet diagrammes"
+  Si un jalon similaire existe → ENRICHIS-LE avec replace_section (en gardant le heading
+  existant et en ajoutant les détails manquants), au lieu de créer une section dupliquée.
+  Ceci est particulièrement important après une compaction où les sections ont été résumées.
+- Identifie le RÔLE de chaque fichier bank à partir des RULES fournies (pas à partir du nom de fichier).
 - Les headings doivent correspondre EXACTEMENT à ceux du fichier (avec les ## )
 - Si un fichier n'a pas besoin de modification, NE L'INCLUS PAS
 - La synthèse doit être concise mais couvrir les points clés des notes traitées
@@ -495,7 +505,7 @@ Retourne un JSON avec cette structure exacte :
 5. Les headings dans les opérations doivent correspondre EXACTEMENT à ceux du fichier (ex: "## Focus Actuel")
 6. Préfère append_to_section pour AJOUTER de l'information sans rien perdre
 7. Préfère replace_section pour METTRE À JOUR une section dont le contenu change
-8. Pour progress.md : TOUJOURS append, JAMAIS supprimer l'historique
+8. Pour les fichiers d'historique/progression : TOUJOURS append, JAMAIS supprimer l'historique
 9. La synthèse résiduelle doit résumer les notes traitées"""
 
         return [
@@ -1311,7 +1321,7 @@ def _sanitize_filename(filename: str) -> str:
     Supprime les caractères Unicode invisibles et normalise les tirets
     Unicode vers le tiret ASCII standard (U+002D).
 
-    Bug découvert le 13/03/2026 : le LLM qwen3-2507:235b insère des
+    Bug découvert le 13/03/2026 : le LLM insère des
     caractères invisibles dans les noms de fichiers à partir du ~8ème
     fichier dans les réponses JSON longues. Ces caractères rendent
     les fichiers illisibles par bank_read (qui reconstruit la clé S3

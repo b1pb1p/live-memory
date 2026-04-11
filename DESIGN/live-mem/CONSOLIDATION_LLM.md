@@ -124,7 +124,7 @@ Un **seul appel** LLM pour toute la consolidation.
 
 ```python
 response = await self._client.chat.completions.create(
-    model=self._model,           # qwen3-2507:235b
+    model=self._model,           # qwen3.5:27b
     messages=messages,
     max_tokens=self._max_tokens, # 100000
     temperature=self._temperature, # 0.3
@@ -197,7 +197,7 @@ await storage.delete_many(notes_keys)
 
 ### Motivation
 
-Le LLM `qwen3-2507:235b` insère des **caractères Unicode invisibles** (ZWSP, BOM, Soft Hyphen) dans les noms de fichiers à partir du ~8ème fichier dans les réponses JSON longues. Ces caractères rendent les fichiers bank illisibles par `bank_read`. La consolidation par lots produit des réponses JSON plus courtes, éliminant ce problème.
+Le LLM `qwen3.5:27b` insère des **caractères Unicode invisibles** (ZWSP, BOM, Soft Hyphen) dans les noms de fichiers à partir du ~8ème fichier dans les réponses JSON longues. Ces caractères rendent les fichiers bank illisibles par `bank_read`. La consolidation par lots produit des réponses JSON plus courtes, éliminant ce problème.
 
 ### Configuration
 
@@ -492,7 +492,7 @@ Identique à la v0.5 : atomicité logique, notes supprimées en dernier.
 ```env
 LLMAAS_API_URL=https://api.ai.cloud-temple.com/v1
 LLMAAS_API_KEY=your_key
-LLMAAS_MODEL=qwen3-2507:235b
+LLMAAS_MODEL=qwen3.5:27b
 LLMAAS_MAX_TOKENS=100000
 LLMAAS_TEMPERATURE=0.3
 CONSOLIDATION_TIMEOUT=600
