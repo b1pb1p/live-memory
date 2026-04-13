@@ -1,4 +1,4 @@
-# Product Management Memory Bank Rules — LIVE MEMORY v1.0.0
+# Product Management Memory Bank Rules — LIVE MEMORY v1.1.0
 
 ## Core Principle
 
@@ -16,21 +16,23 @@ productVision.md (foundation — mission, vision, positioning, values)
 ├── marketIntelligence.md (competition, market, regulation, trends)
 ├── userKnowledge.md (cross-persona synthesis, JTBD, feedback patterns)
 │   └── persona-[name].md (dynamic — created as insights emerge)
+├── stakeholders.md (internal stakeholders, communication matrix, dynamics)
 ├── designSystem.md (UX principles, patterns, components, conventions)
-├── uxWritingGuide.md (voice & tone, terminology, multilingual glossary)
+├── communicationGuide.md (product voice, UX writing, PM communication styles)
 ├── engineeringContext.md (architecture, tech constraints, debt, capacity)
 └── discoveryPlaybook.md (discovery pipeline, frameworks, templates)
+    ├── framework-[name].md (dynamic — strategic reference frameworks)
     └── activeContext.md (current focus — session entry point)
         └── roadmapProgress.md (roadmap, delivered, backlog, decision log)
 ```
 
 - `productVision.md` is the foundational document that shapes all others
-- Domain files (`portfolio`, `marketIntelligence`, `userKnowledge`, `designSystem`, `uxWritingGuide`, `engineeringContext`) provide specialized context
-- `discoveryPlaybook.md` defines how the team works
+- Domain files (`portfolio`, `marketIntelligence`, `userKnowledge`, `stakeholders`, `designSystem`, `communicationGuide`, `engineeringContext`) provide specialized context
+- `discoveryPlaybook.md` defines how the team works, with optional `framework-*.md` reference files
 - `activeContext.md` synthesizes the current focus from all other files
 - `roadmapProgress.md` tracks advancement and decision history
 
-## Mandatory Files (10 files)
+## Mandatory Files (11 files)
 
 ### productVision.md
 **Product foundation — rarely modified.**
@@ -74,6 +76,19 @@ productVision.md (foundation — mission, vision, positioning, values)
 - Feature adoption metrics and usage patterns (if tracked)
 - This file provides the transverse view; persona-specific details live in persona files
 
+### stakeholders.md
+**Internal stakeholder intelligence — how to navigate the organization.**
+- Key stakeholders: name, role, scope of responsibility, decision authority
+- Communication preferences per stakeholder: preferred channel (Slack, email, 1:1), frequency, level of detail expected
+- Decision styles: how each stakeholder makes decisions (data-driven, consensus-seeking, gut-feel, etc.)
+- Communication matrix: who gets what information, when, in what format
+- Organizational dynamics: alliances, tensions, who influences whom, escalation paths
+- Recurring feedback patterns: what Sales consistently asks for, what the CTO blocks, what the CEO cares about
+- Champions and detractors per initiative: who supports what and why
+- Pet peeves and green lights: what gets easy approval vs. what raises red flags
+- This file helps the agent navigate organizational complexity and tailor communication
+- A PM spends ~50% of time managing stakeholders — losing this context between sessions is costly
+
 ### designSystem.md
 **UX principles, patterns, and component state.**
 - Design principles: the guiding philosophy for all design decisions
@@ -84,15 +99,25 @@ productVision.md (foundation — mission, vision, positioning, values)
 - Design debt: known UX issues, inconsistencies between platforms, outdated patterns
 - This file helps an agent produce design recommendations consistent with existing standards
 
-### uxWritingGuide.md
-**Voice, tone, and terminology — how the product speaks.**
+### communicationGuide.md
+**Product voice, UX writing, and PM communication standards.**
+
+**Part 1 — Product Voice & UX Writing:**
 - Brand personality: how the product should feel in words (professional, friendly, authoritative, etc.)
 - Tone guidelines by context: errors, onboarding, empty states, success messages, marketing, notifications
 - Terminology glossary: approved terms, forbidden terms, and why (multilingual if applicable)
 - Do / Don't examples: concrete before/after rewrites for common patterns
 - Naming conventions: how features, UI elements, and actions are named
 - Localization notes: language-specific considerations, translation pitfalls
-- This file ensures consistent product voice across all touchpoints
+
+**Part 2 — PM Communication Standards:**
+- **Internal register** (Slack, standups, team syncs): direct, action-oriented, bullet points preferred, use "we" not "I"
+- **Technical register** (specs, tickets, engineering discussions): precise terminology, edge cases explicit, technical constraints upfront, include API/integration details where relevant
+- **Executive register** (status updates, steering committees, board decks): lead with the "so what", numbers and impact first, strategic rationale clear, explicit ask (what decision is needed?)
+- **Customer/user register** (in-app copy, support responses, marketing, release notes): simple language, benefits before features, concrete examples over abstractions, empathetic tone
+- Style rules: vary sentence length, use contractions naturally, avoid corporate jargon ("leverage", "synergize", "cutting-edge"), lead with positive recommendations
+
+This file ensures consistent voice across all product touchpoints AND PM communications.
 
 ### engineeringContext.md
 **Technical reality that shapes product decisions.**
@@ -111,8 +136,9 @@ productVision.md (foundation — mission, vision, positioning, values)
 - **Discovery frameworks** (reference, not prescription): F.O.C.U.S.E.D. (Frame, Observe, Claim, Unfold, Steal, Execute, Decide), Opportunity Solution Tree, Double Diamond, Continuous Discovery Habits, Design Sprint. The team picks what fits each situation.
 - **Product Trio** principle: PM + Designer + Engineer collaborate from discovery onward, not through sequential handoffs
 - **Prioritization framework**: team-specific scoring or ranking method (document here when formalized)
-- **Spec/PRD template**: structure and expectations for product specifications
+- **Spec/PRD template**: structure and expectations for product specifications (the `feature-*.md` template below serves as the standard)
 - **Go/no-go criteria**: what conditions must be met before committing to build a feature
+- **Strategic frameworks library**: list of reference frameworks the team uses (e.g., JTBD, PLG Iceberg, Hook-Retain-Expand, 7 Powers, Growth Loops, Counter-positioning, AI Product Strategy). Each framework lives as a separate `framework-[name].md` file in the bank — static reference documents written via `bank_write`, not created by consolidation.
 - This file defines the "how" of product work and changes only when the process evolves
 
 ### activeContext.md
@@ -200,7 +226,7 @@ Created when a feature enters active discovery or specification. Archived to `ro
 # Feature: [Name]
 
 ## Current Phase
-Problem Framing | Research | Ideation | Prototyping | Validation | Specification | Handed Off
+Problem Framing | Research | Ideation | Prototyping | Validation | Specification | Handed Off | Rollout | Impact Review
 
 ## Target Outcome
 What business or product result we're seeking (tied to OKR or north-star metric)
@@ -220,6 +246,32 @@ Choices and their rationale (mini-ADR: what, why, what was rejected)
 ## Spec / Deliverable
 Link or summary of the current deliverable (PRD, prototype, wireframes)
 
+## Success Metrics
+- **Primary metric**: [name] — baseline: [current] → target: [goal] — timeline: [when]
+- **Guardrail metrics** (must not harm): [metric]: [acceptable range]
+- **Kill criteria**: if [condition], then [rollback / pause / iterate]
+
+## Rollout Plan
+| Phase | Audience | Duration | Pass Criteria |
+|-------|----------|----------|---------------|
+| Phase 1 | [who, % traffic] | [duration] | [metrics to hit] |
+| Phase 2 | [expand to] | [duration] | [metrics to hit] |
+| GA | [everyone] | Ongoing | [steady-state monitoring] |
+
+## Risks & Recovery
+| Risk | Detection Signal | Fallback | Kill Switch |
+|------|-----------------|----------|-------------|
+| [risk] | [signal, threshold] | [fallback action] | [who owns, where] |
+
+## AI Behavior Contract (if applicable)
+> Include only for features with AI/ML components.
+- **Task(s)**: summarize / extract / classify / generate / route
+- **Inputs**: [fields, context, tools, RAG sources]
+- **Guardrails**: [brand voice, privacy rules, compliance constraints]
+- **Disallowed**: [PII echo, policy violations, specific failure modes]
+- **Latency budget**: P50: [X]ms / P95: [Y]ms
+- **Eval plan**: offline eval ([metric, target]) → human review ([sample, quality target]) → online eval ([primary metric, duration])
+
 ## Constraints
 Technical, regulatory, business, or timeline constraints shaping the solution
 
@@ -229,20 +281,35 @@ What's still unresolved, who needs to answer, by when
 
 **Consolidator rules for features:**
 - Create the file when a note indicates a feature has entered discovery
-- Update the "Current Phase" as the feature progresses
+- Update the "Current Phase" as the feature progresses through the extended lifecycle (Problem Framing → ... → Impact Review)
 - When a feature ships or is rejected, summarize its outcome in `roadmapProgress.md` and remove the feature file (or mark it as archived)
 - Maximum ~10 active feature files at a time — if more exist, consider whether some should be frozen or rejected
+- Success Metrics, Rollout Plan, Risks & Recovery, and AI Behavior Contract sections can be left empty in early phases and filled as the feature matures
+
+### Framework Files (`framework-[name].md`)
+
+Static reference documents containing strategic frameworks used by the product team. These are NOT created by the consolidator — they are written directly via `bank_write` by an admin or agent.
+
+**Purpose:** Provide persistent strategic context (e.g., JTBD canvas, PLG playbook, Growth Loops reference) that agents can read at session start to inform product decisions.
+
+**Naming convention:** `framework-jtbd.md`, `framework-plg-iceberg.md`, `framework-hook-retain-expand.md`, `framework-7-powers.md`, etc.
+
+**Consolidator rules for frameworks:**
+- NEVER modify or delete framework files during consolidation
+- Framework files are read-only reference material
+- If a note references a framework, the insight goes into the appropriate domain file (e.g., `userKnowledge.md`, `marketIntelligence.md`, `discoveryPlaybook.md`) — not into the framework file itself
+- The list of available frameworks should be maintained in `discoveryPlaybook.md` (Strategic Frameworks Library section)
 
 ## Note Categories and Their Product Team Usage
 
 During work, the agent writes atomic notes via `live_note` with these categories:
 
-- **`observation`** — Factual finding: data point, user feedback, test result, market signal, competitive move, usage metric
-- **`decision`** — Product, design, or UX writing choice and its rationale: feature scope, design direction, terminology change, prioritization call
+- **`observation`** — Factual finding: data point, user feedback, test result, market signal, competitive move, usage metric, stakeholder comment or reaction
+- **`decision`** — Product, design, or UX writing choice and its rationale: feature scope, design direction, terminology change, prioritization call, communication approach
 - **`progress`** — Advancement: spec completed, prototype validated, feature shipped, research study finished, design review done
-- **`issue`** — Problem identified: UX debt, inconsistency, negative user feedback, engineering blocker, competitive threat, missed target
-- **`todo`** — Task to do: user interview to schedule, spec to write, prototype to test, design review to run, competitor to analyze
-- **`insight`** — Learning: UX pattern discovered, market correlation identified, user behavior revelation, design principle validated, effective messaging found
+- **`issue`** — Problem identified: UX debt, inconsistency, negative user feedback, engineering blocker, competitive threat, missed target, stakeholder misalignment
+- **`todo`** — Task to do: user interview to schedule, spec to write, prototype to test, design review to run, competitor to analyze, stakeholder to align
+- **`insight`** — Learning: UX pattern discovered, market correlation identified, user behavior revelation, design principle validated, effective messaging found, stakeholder dynamic understood
 - **`question`** — Point to clarify: trade-off to resolve, missing information, validation needed from stakeholder, open design question
 
 ## When to Update the Memory Bank
@@ -252,8 +319,9 @@ The bank must be updated (via consolidation):
 2. After a product decision (roadmap change, feature scoped/rejected, pivot)
 3. After user research sessions or significant feedback received
 4. After a design review or UX writing review producing actionable changes
-5. At the end of every work session (always)
-6. When the user explicitly requests an update
+5. After a significant stakeholder interaction (alignment meeting, escalation, strategy shift)
+6. At the end of every work session (always)
+7. When the user explicitly requests an update
 
 ## Agent Workflow
 
@@ -262,11 +330,12 @@ The bank must be updated (via consolidation):
 2. Check completeness and consistency across files
 3. Identify current focus in `activeContext.md`
 4. Review active feature files to understand ongoing discovery/spec work
-5. Develop a work strategy before taking action
+5. Review `stakeholders.md` to understand current organizational dynamics
+6. Develop a work strategy before taking action
 
 ### During Work
 1. Write frequent, atomic notes via `live_note` — one note = one fact, one decision, or one task
-2. NEVER write directly to the bank — only the LLM consolidation does that
+2. NEVER write directly to the bank — only the LLM consolidation does that (except `framework-*.md` files via `bank_write`)
 3. Check other agents' notes via `live_read` if working in a multi-agent setup (PM agent, Design agent, etc.)
 
 ### At Session End
@@ -277,12 +346,12 @@ The bank must be updated (via consolidation):
 
 ### Mapping Note Categories to Bank Files
 
-- `observation` (factual findings) → `activeContext.md` (recent work) + `userKnowledge.md` (if user-related) or `marketIntelligence.md` (if market-related) or `portfolio.md` (if product state) + `persona-*.md` (if persona-specific)
-- `decision` (product/design choices) → `activeContext.md` (active decisions) + `feature-*.md` (if feature-related) + `roadmapProgress.md` (if strategic, add ADR entry) + `designSystem.md` or `uxWritingGuide.md` (if design/writing standard)
+- `observation` (factual findings) → `activeContext.md` (recent work) + `userKnowledge.md` (if user-related) or `marketIntelligence.md` (if market-related) or `portfolio.md` (if product state) or `stakeholders.md` (if about a stakeholder's behavior, reaction, or preference) + `persona-*.md` (if persona-specific)
+- `decision` (product/design choices) → `activeContext.md` (active decisions) + `feature-*.md` (if feature-related) + `roadmapProgress.md` (if strategic, add ADR entry) + `designSystem.md` or `communicationGuide.md` (if design/writing/communication standard) + `stakeholders.md` (if decision involves stakeholder alignment or is influenced by a stakeholder)
 - `progress` (advancement) → `roadmapProgress.md` (journal + metrics) + `activeContext.md` (current state) + `feature-*.md` (update phase)
-- `issue` (problems) → `activeContext.md` (if blocking) + `portfolio.md` (if product debt) + `engineeringContext.md` (if tech constraint) + `feature-*.md` (if feature-specific)
+- `issue` (problems) → `activeContext.md` (if blocking) + `portfolio.md` (if product debt) + `engineeringContext.md` (if tech constraint) + `feature-*.md` (if feature-specific) + `stakeholders.md` (if stakeholder misalignment or organizational blocker)
 - `todo` (tasks) → `activeContext.md` (next steps)
-- `insight` (learnings) → `userKnowledge.md` (if user behavior) or `marketIntelligence.md` (if market) + `designSystem.md` (if UX pattern) + `persona-*.md` (if persona-specific) + `discoveryPlaybook.md` (if process learning)
+- `insight` (learnings) → `userKnowledge.md` (if user behavior) or `marketIntelligence.md` (if market) + `designSystem.md` (if UX pattern) + `communicationGuide.md` (if communication pattern or writing convention) + `persona-*.md` (if persona-specific) + `discoveryPlaybook.md` (if process learning) + `stakeholders.md` (if organizational dynamic or stakeholder pattern)
 - `question` (open points) → `activeContext.md` (pending decisions) + `feature-*.md` (if feature-specific)
 
 ### Managing Dynamic Files
@@ -296,6 +365,12 @@ The bank must be updated (via consolidation):
 - If a note references a feature in active discovery/specification, update the corresponding `feature-[name].md`
 - If the feature file doesn't exist yet, create it using the template defined above
 - When a feature is marked as shipped, rejected, or frozen, summarize in `roadmapProgress.md` and remove the feature file
+- Sections like Success Metrics, Rollout Plan, Risks & Recovery, and AI Behavior Contract may be empty in early phases — that's expected
+
+**Framework files:**
+- NEVER create, modify, or delete framework files during consolidation
+- If a note references a framework, route the insight to the appropriate domain file
+- Only update the frameworks list in `discoveryPlaybook.md` if a note explicitly adds or removes a framework from the team's toolkit
 
 ### Consolidation Rules
 
@@ -306,8 +381,10 @@ The bank must be updated (via consolidation):
 5. **productVision.md is quasi-immutable** — only modify if a note fundamentally changes the product's mission, vision, or positioning
 6. **Clean activeContext.md aggressively** — move completed items to roadmapProgress.md; target < 8 KB
 7. **Enrich personas progressively** — every user research note, interview finding, or feedback pattern enriches the relevant persona file; never delete persona content, only refine
-8. **Manage feature file lifecycle** — create on discovery entry, update throughout, archive on completion or rejection
+8. **Manage feature file lifecycle** — create on discovery entry, update throughout (including Success Metrics, Rollout Plan, Risks as the feature matures), archive on completion or rejection
 9. **Respect the hierarchy** — information must live in the appropriate file per the structure defined above
 10. **Keep files concise** — activeContext.md < 8 KB, other files < 15 KB. Beyond that, synthesize or archive to roadmapProgress.md
 11. **Update, don't duplicate** — if a section already exists on the same topic, REPLACE it with updated content. Never create duplicate sections.
-12. **Track design and writing standards** — when a note establishes a new UX pattern or writing convention, add it to `designSystem.md` or `uxWritingGuide.md` respectively
+12. **Track design, writing, and communication standards** — when a note establishes a new UX pattern, add it to `designSystem.md`; when it establishes a writing convention or communication approach, add it to `communicationGuide.md`
+13. **Maintain stakeholder intelligence** — when a note reveals stakeholder preferences, decision patterns, organizational dynamics, or communication feedback, update `stakeholders.md`. This file is critical for organizational navigation.
+14. **Never touch framework files** — `framework-*.md` files are read-only reference material, managed outside the consolidation pipeline
