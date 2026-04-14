@@ -26,6 +26,9 @@ env/
 # === Docker ===
 docker-compose.override.yml
 
+# === MCP config (local) ===
+.mcp.json
+
 # === IDE ===
 .vscode/
 .idea/

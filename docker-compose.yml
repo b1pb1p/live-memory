@@ -1,4 +1,4 @@
-# docker-compose.yml — Service MCP + WAF
+# docker-compose.yml — Service MCP + WAF + MinIO
 #
 # Usage :
 #   docker compose build
@@ -7,9 +7,53 @@
 #
 # Architecture réseau :
 #   Internet → WAF (port 8080) → live-mem-service (port 8002, interne)
+#   MinIO S3 (port 9000 interne, console 9001 exposée pour admin)
 #   Le service MCP n'est PAS exposé directement.
-
 services:
+  # ─────────────────────────────────────────────────────────────
+  # MinIO — S3-compatible object storage (local dev)
+  # ─────────────────────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    ports:
+      - "9001:9001"       # Web console only — S3 API stays internal
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-minioadmin}
+      MINIO_DRIVE_MAX_TIMEOUT: 1m
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
+    networks:
+      - live-mem-network
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+
+  # ─────────────────────────────────────────────────────────────
+  # MinIO init — creates the bucket on first run, then exits
+  # ─────────────────────────────────────────────────────────────
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD};
+        mc mb --ignore-existing local/$${BUCKET_NAME};
+        echo 'Bucket ready';
+      "
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-minioadmin}
+      BUCKET_NAME: ${S3_BUCKET_NAME:-live-mem}
+    networks:
+      - live-mem-network
 
   # ─────────────────────────────────────────────────────────────
   # WAF — Caddy + Coraza OWASP CRS + Rate Limiting
@@ -39,7 +83,7 @@ services:
       - live-mem-network
 
   # ─────────────────────────────────────────────────────────────
-  # Service MCP — Votre application
+  # Service MCP — Live Memory
   # ─────────────────────────────────────────────────────────────
   # NON exposé publiquement — accessible uniquement via le WAF.
   # ─────────────────────────────────────────────────────────────
@@ -48,45 +92,26 @@ services:
     image: live-memory:latest
     # PAS de "ports:" — le WAF est le seul point d'entrée
     env_file: .env
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
     restart: unless-stopped
     networks:
       - live-mem-network
     healthcheck:
-      # Vérification HTTP : le serveur répond sur /health
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health', timeout=2)"]
       interval: 30s
       timeout: 5s
       start_period: 10s
       retries: 3
 
-  # ─────────────────────────────────────────────────────────────
-  # Ajouter vos services backend ici (base de données, cache, etc.)
-  # Ils ne sont PAS exposés publiquement.
-  # ─────────────────────────────────────────────────────────────
-  #
-  # Exemple PostgreSQL :
-  # db:
-  #   image: postgres:16-alpine
-  #   environment:
-  #     POSTGRES_DB: mydb
-  #     POSTGRES_USER: myuser
-  #     POSTGRES_PASSWORD: ${DB_PASSWORD}
-  #   volumes:
-  #     - db_data:/var/lib/postgresql/data
-  #   networks:
-  #     - live-mem-network
-  #
-  # Exemple Redis :
-  # redis:
-  #   image: redis:7-alpine
-  #   networks:
-  #     - live-mem-network
-
 networks:
   live-mem-network:
     driver: bridge
 
-# volumes:
+volumes:
+  minio_data:
+# Décommenter en production :
 #   caddy_data:
 #   caddy_config:
-#   db_data:
+

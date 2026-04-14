@@ -72,7 +72,17 @@ def cli(ctx, url, token):
 @click.pass_context
 def health_cmd(ctx, jflag):
     """❤️  État de santé du service."""
-    _run_tool(ctx, "system_health", {}, show_health_result, jflag)
+    import httpx
+    try:
+        url = ctx.obj["url"].rstrip("/") + "/health"
+        resp = httpx.get(url, timeout=10)
+        result = resp.json()
+        if jflag:
+            show_json(result)
+        else:
+            show_health_result(result)
+    except Exception as e:
+        show_error(f"Connexion impossible: {e}")
 
 
 @cli.command("whoami")

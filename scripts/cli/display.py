@@ -48,12 +48,24 @@ def show_json(data: dict):
 # =============================================================================
 
 def show_health_result(result: dict):
-    """Affiche le résultat de system_health."""
+    """Affiche le résultat du health check (HTTP /health ou MCP system_health)."""
     status = result.get("status", "?")
     services = result.get("services", {})
-    icon = "✅" if status == "healthy" else "⚠️"
+    svc_name = result.get("service_name") or result.get("service", "?")
+    version = result.get("version", "")
 
-    table = Table(title=f"{icon} Health — {result.get('service_name', '?')}", show_header=True)
+    if status == "healthy":
+        icon = "✅"
+    elif status == "degraded":
+        icon = "⚠️"
+    else:
+        icon = "❌"
+
+    title = f"{icon} Health — {svc_name}"
+    if version:
+        title += f" v{version}"
+
+    table = Table(title=title, show_header=True)
     table.add_column("Service", style="cyan bold")
     table.add_column("Statut")
     table.add_column("Détails", style="dim")
@@ -61,9 +73,23 @@ def show_health_result(result: dict):
     for name, info in services.items():
         if isinstance(info, dict):
             s = info.get("status", "?")
-            s_icon = "✅" if s == "ok" else "❌"
-            details = info.get("message", info.get("latency_ms", ""))
-            table.add_row(name, f"{s_icon} {s}", str(details))
+            if s == "ok":
+                s_icon = "✅"
+            elif s == "warning":
+                s_icon = "⚠️"
+            else:
+                s_icon = "❌"
+            # Build details: model, latency, bucket, or error message
+            details_parts = []
+            if info.get("model"):
+                details_parts.append(info["model"])
+            if info.get("bucket"):
+                details_parts.append(f"bucket={info['bucket']}")
+            if info.get("latency_ms") is not None:
+                details_parts.append(f"{info['latency_ms']}ms")
+            if info.get("message"):
+                details_parts.append(info["message"])
+            table.add_row(name, f"{s_icon} {s}", "  ".join(details_parts))
 
     console.print(table)
 

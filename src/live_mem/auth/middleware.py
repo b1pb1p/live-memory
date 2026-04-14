@@ -279,39 +279,79 @@ class StaticFilesMiddleware:
 
     async def _handle_health(self, send):
         """
-        Endpoint /health — probes S3 connectivity.
+        Endpoint /health — probes S3 and LLMaaS connectivity.
 
-        Returns 200 + {"status": "healthy"} when S3 is reachable,
-        or 503 + {"status": "unhealthy", "reason": "..."} otherwise.
-        Keeps the probe fast (2s timeout on S3 test).
+        Returns 200 + {"status": "healthy"} when all dependencies are reachable,
+        200 + {"status": "degraded"} when some are down,
+        or 503 + {"status": "unhealthy"} when critical deps fail.
         """
         import json
+        import time
         from pathlib import Path
 
         version_file = Path(__file__).parent.parent.parent.parent / "VERSION"
         version = version_file.read_text().strip() if version_file.exists() else "dev"
 
-        status_code = 200
-        result = {
-            "status": "healthy",
-            "service": "live-memory",
-            "version": version,
-            "transport": "streamable-http",
-        }
+        services = {}
 
-        # Probe S3 connectivity (the critical dependency)
+        # ── Probe S3 (critical) ──────────────────────────────
         try:
             from ..core.storage import get_storage
             storage = get_storage()
-            s3_result = await storage.test_connection()
-            if s3_result.get("status") != "ok":
-                status_code = 503
-                result["status"] = "unhealthy"
-                result["reason"] = f"S3: {s3_result.get('message', 'not reachable')}"
+            services["s3"] = await storage.test_connection()
         except Exception as e:
+            services["s3"] = {"status": "error", "message": str(e)}
+
+        # ── Probe LLMaaS ─────────────────────────────────────
+        try:
+            from ..config import get_settings
+            settings = get_settings()
+            if settings.llmaas_api_url and settings.llmaas_api_key:
+                from openai import AsyncOpenAI
+                t0 = time.monotonic()
+                client = AsyncOpenAI(
+                    base_url=settings.llmaas_api_url,
+                    api_key=settings.llmaas_api_key,
+                    timeout=5,
+                )
+                await client.chat.completions.create(
+                    model=settings.llmaas_model,
+                    messages=[{"role": "user", "content": "Réponds OK"}],
+                    max_tokens=5,
+                )
+                latency = round((time.monotonic() - t0) * 1000, 1)
+                services["llmaas"] = {
+                    "status": "ok",
+                    "model": settings.llmaas_model,
+                    "latency_ms": latency,
+                }
+            else:
+                services["llmaas"] = {
+                    "status": "warning",
+                    "message": "LLMaaS non configuré",
+                }
+        except Exception as e:
+            services["llmaas"] = {"status": "error", "message": str(e)}
+
+        # ── Global status ─────────────────────────────────────
+        statuses = [s.get("status", "error") for s in services.values()]
+        if all(s == "ok" for s in statuses):
+            overall = "healthy"
+            status_code = 200
+        elif services["s3"].get("status") != "ok":
+            overall = "unhealthy"
             status_code = 503
-            result["status"] = "unhealthy"
-            result["reason"] = f"S3: {e}"
+        else:
+            overall = "degraded"
+            status_code = 200
+
+        result = {
+            "status": overall,
+            "service": "live-memory",
+            "version": version,
+            "transport": "streamable-http",
+            "services": services,
+        }
 
         body = json.dumps(result).encode("utf-8")
         await send({

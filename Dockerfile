@@ -2,10 +2,8 @@
 # Dockerfile — Live Memory MCP Server (multi-stage, rootless)
 # =============================================================================
 # Two-stage build:
-#   1. Builder — installs dependencies into a virtual environment
-#   2. Runtime — copies only the venv + source code (no pip, no build tools)
-#
-# Result: smaller image, no build tools in prod, reduced attack surface.
+#   1. Builder — installs dependencies via uv (frozen lockfile)
+#   2. Runtime — copies only the venv + source code (no build tools)
 #
 # Usage :
 #   docker compose build
@@ -15,16 +13,24 @@
 ARG PYTHON_VER=3.11
 
 # ─────────────────────────────────────────────────────────────
-# Stage 1: Builder — install dependencies
+# Stage 1: Builder — install dependencies via uv
 # ─────────────────────────────────────────────────────────────
-FROM python:${PYTHON_VER}-slim AS builder
+FROM ghcr.io/astral-sh/uv:0.7-python${PYTHON_VER}-bookworm-slim AS builder
 
-WORKDIR /build
+WORKDIR /app
 
-COPY requirements.txt .
+ENV UV_PROJECT_ENVIRONMENT="/opt/venv"
 
-RUN python -m venv /opt/venv \
-    && /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
+# 1) Install deps only (cached layer — only invalidated when lockfile changes)
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project --no-install-workspace
+
+# 2) Install the project itself
+COPY VERSION .
+COPY src/ src/
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
 
 # ─────────────────────────────────────────────────────────────
 # Stage 2: Runtime — lean production image
@@ -45,9 +51,7 @@ COPY --chown=mcp:mcp scripts/ scripts/
 COPY --chown=mcp:mcp RULES/ RULES/
 COPY --chown=mcp:mcp VERSION .
 
-# Use the venv Python and add src/ to module path
 ENV PATH="/opt/venv/bin:$PATH" \
-    PYTHONPATH=/app/src \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
@@ -57,7 +61,6 @@ USER mcp
 EXPOSE 8002
 
 # Healthcheck : vérifier que le serveur répond sur /health
-# (pas de curl dans slim → utiliser python)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8002/health', timeout=2)" || exit 1
 
