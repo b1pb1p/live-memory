@@ -6,14 +6,14 @@ Memory Bank consolidée : lire, lister, consolider via LLM, compacter,
 réparer, écrire et supprimer manuellement.
 
 Permissions :
-    - bank_read        🔑 (read)  — Lit un fichier bank spécifique
-    - bank_read_all    🔑 (read)  — Lit toute la bank (démarrage agent)
-    - bank_list        🔑 (read)  — Liste les fichiers bank (sans contenu)
-    - bank_consolidate ✏️ (write) — Déclenche la consolidation LLM
-    - bank_compact     👑 (admin) — Compacte les fichiers bank surdimensionnés via LLM
-    - bank_repair      👑 (admin) — Répare les noms de fichiers corrompus par le LLM
-    - bank_write       👑 (admin) — Écrit/remplace un fichier bank directement
-    - bank_delete      👑 (admin) — Supprime un fichier bank
+    - bank_read        🔑 (read)    — Lit un fichier bank spécifique
+    - bank_read_all    🔑 (read)    — Lit toute la bank (démarrage agent)
+    - bank_list        🔑 (read)    — Liste les fichiers bank (sans contenu)
+    - bank_consolidate ✏️ (write)   — Déclenche la consolidation LLM
+    - bank_compact     🔧 (manage)  — Compacte les fichiers bank surdimensionnés via LLM
+    - bank_repair      🔧 (manage)  — Répare les noms de fichiers corrompus par le LLM
+    - bank_write       🔧 (manage)  — Écrit/remplace un fichier bank directement
+    - bank_delete      🔧 (manage)  — Supprime un fichier bank
 
 La consolidation est l'opération qui transforme les notes live en
 fichiers bank structurés. Un seul consolidate à la fois par espace
@@ -372,7 +372,7 @@ def register(mcp: FastMCP) -> int:
         Returns:
             Liste des fichiers réparés + doublons détectés
         """
-        from ..auth.context import check_access, check_admin_permission
+        from ..auth.context import check_access, check_manage_permission
         from ..core.storage import get_storage, bank_relpath
         from ..core.consolidator import _sanitize_filename
 
@@ -381,9 +381,9 @@ def register(mcp: FastMCP) -> int:
             if access_err:
                 return access_err
 
-            admin_err = check_admin_permission()
-            if admin_err:
-                return admin_err
+            manage_err = check_manage_permission()
+            if manage_err:
+                return manage_err
 
             storage = get_storage()
 
@@ -512,7 +512,7 @@ def register(mcp: FastMCP) -> int:
         content: Annotated[str, Field(description="Contenu Markdown complet du fichier")],
     ) -> dict:
         """
-        Écrit ou remplace un fichier dans la Memory Bank (admin).
+        Écrit ou remplace un fichier dans la Memory Bank (manage).
 
         ⚠️ Cet outil contourne la consolidation LLM — il écrit directement
         dans la bank. À utiliser pour les corrections manuelles quand la
@@ -529,7 +529,7 @@ def register(mcp: FastMCP) -> int:
         Returns:
             Statut de l'écriture avec taille du fichier
         """
-        from ..auth.context import check_access, check_admin_permission
+        from ..auth.context import check_access, check_manage_permission
         from ..core.storage import get_storage
         from ..core.consolidator import _sanitize_filename
 
@@ -538,9 +538,9 @@ def register(mcp: FastMCP) -> int:
             if access_err:
                 return access_err
 
-            admin_err = check_admin_permission()
-            if admin_err:
-                return admin_err
+            manage_err = check_manage_permission()
+            if manage_err:
+                return manage_err
 
             storage = get_storage()
 
@@ -599,7 +599,7 @@ def register(mcp: FastMCP) -> int:
         filename: Annotated[str, Field(description="Nom du fichier bank à supprimer")],
     ) -> dict:
         """
-        Supprime un fichier de la Memory Bank (admin).
+        Supprime un fichier de la Memory Bank (manage).
 
         Supprime aussi tous les doublons (fichiers avec le même
         nom sanitisé à des chemins S3 différents).
@@ -614,7 +614,7 @@ def register(mcp: FastMCP) -> int:
         Returns:
             Nombre de fichiers supprimés (incluant les doublons)
         """
-        from ..auth.context import check_access, check_admin_permission
+        from ..auth.context import check_access, check_manage_permission
         from ..core.storage import get_storage, bank_relpath
         from ..core.consolidator import _sanitize_filename
 
@@ -623,9 +623,9 @@ def register(mcp: FastMCP) -> int:
             if access_err:
                 return access_err
 
-            admin_err = check_admin_permission()
-            if admin_err:
-                return admin_err
+            manage_err = check_manage_permission()
+            if manage_err:
+                return manage_err
 
             storage = get_storage()
 
@@ -677,7 +677,7 @@ def register(mcp: FastMCP) -> int:
         dry_run: Annotated[bool, Field(default=True, description="True = scan seul (rapport sans modification), False = compaction effective via LLM")] = True,
     ) -> dict:
         """
-        Compacte les fichiers bank surdimensionnés via LLM (admin).
+        Compacte les fichiers bank surdimensionnés via LLM (manage).
 
         Analyse chaque fichier bank et compare sa taille à la limite
         universelle configurée (BANK_FILE_MAX_SIZE, par défaut 15 KB).
@@ -701,7 +701,7 @@ def register(mcp: FastMCP) -> int:
         Returns:
             Rapport de compaction avec détails par fichier (taille, ratio, réduction)
         """
-        from ..auth.context import check_access, check_admin_permission
+        from ..auth.context import check_access, check_manage_permission
         from ..core.locks import get_lock_manager
         from ..core.consolidator import get_consolidator
 
@@ -710,9 +710,9 @@ def register(mcp: FastMCP) -> int:
             if access_err:
                 return access_err
 
-            admin_err = check_admin_permission()
-            if admin_err:
-                return admin_err
+            manage_err = check_manage_permission()
+            if manage_err:
+                return manage_err
 
             # Protéger par le lock de consolidation (la compaction
             # modifie les fichiers bank — incompatible avec une

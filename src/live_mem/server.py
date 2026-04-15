@@ -210,6 +210,30 @@ def main():
 
     print(banner, file=sys.stderr)
 
+    # Migration v1.5.0 : peupler les tokens avec space_ids=[] existants
+    # Depuis v1.5.0, space_ids=[] signifie "aucun accès" (au lieu de "tous").
+    # Cette migration one-shot assigne tous les espaces existants aux tokens
+    # non-admin qui avaient space_ids=[].
+    import asyncio
+    async def _run_migration():
+        from .core.space import get_space_service
+        from .core.tokens import get_token_service
+        try:
+            spaces_result = await get_space_service().list_spaces()
+            if spaces_result.get("status") == "ok":
+                all_ids = [s["space_id"] for s in spaces_result.get("spaces", [])]
+                if all_ids:
+                    result = await get_token_service().migrate_empty_space_ids(all_ids)
+                    if result.get("migrated", 0) > 0:
+                        logger.info(
+                            "🔄 Migration v1.5.0 : %d token(s) mis à jour avec %d espace(s)",
+                            result["migrated"], len(all_ids),
+                        )
+        except Exception as e:
+            logger.warning("⚠️ Migration v1.5.0 échouée (non bloquant) : %s", e)
+
+    asyncio.run(_run_migration())
+
     # Créer l'app ASGI avec middlewares et démarrer Uvicorn
     app = create_app()
 

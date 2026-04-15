@@ -5,6 +5,40 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
 ---
 
+## [1.5.0] — 2026-04-15
+
+### Ajouté
+- **Permission `manage`** — 4ème niveau de permission dans la hiérarchie : `admin ⊃ manage ⊃ write ⊃ read`.
+  - `manage` donne accès aux opérations de maintenance : `bank_write`, `bank_delete`, `bank_repair`, `bank_compact`, `space_delete`, `space_update_rules`, `backup_restore`, `backup_delete`.
+  - Un agent standard (`write`) ne peut plus manipuler directement les fichiers bank ni supprimer des espaces.
+  - `admin` reste requis pour la gestion des tokens et le GC.
+- **`check_manage_permission()`** dans `auth/context.py` — nouveau helper de vérification.
+- **Migration automatique v1.5.0** au démarrage du serveur — les tokens non-admin ayant `space_ids=[]` se voient assigner tous les espaces existants.
+- **Timeout 600s documenté** dans `GUIDE_INTEGRATION_CLINE.md` — toutes les configurations MCP (Cline et Claude Desktop) incluent désormais `"timeout": 600`.
+
+### Modifié
+- **Sémantique de `space_ids=[]`** — signifie désormais "aucun accès" pour les non-admin (au lieu de "tous"). Un token fraîchement créé n'a accès à rien d'existant — il crée ses propres espaces (auto-ajoutés via `add_space_to_token`).
+- **`add_space_to_token()`** — ajoute toujours le space, même si `space_ids` est vide (anciennement skippé).
+- **`space_list`** — retourne une liste vide pour les non-admin avec `space_ids=[]` (au lieu de tout lister).
+- **`backup_list`** — filtrage adapté pour les non-admin avec `space_ids=[]`.
+- **8 outils remontés en `manage`** :
+  - De `write` → `manage` : `bank_delete`, `bank_repair`, `bank_compact`
+  - De `admin` → `manage` : `bank_write`, `space_delete`, `space_update_rules`, `backup_restore`, `backup_delete`
+- **CLI et shell** — support complet du niveau `manage` dans la validation des permissions et l'autocomplétion.
+
+### Fichiers modifiés (15)
+- `src/live_mem/auth/context.py` — `check_manage_permission()`, docstring 4 niveaux, `check_access()` inversé
+- `src/live_mem/core/tokens.py` — `VALID_PERMISSIONS` + `manage`, `migrate_empty_space_ids()`, `add_space_to_token()` simplifié
+- `src/live_mem/tools/bank.py` — 4 outils passés en `check_manage`
+- `src/live_mem/tools/space.py` — `space_delete` et `space_update_rules` en `check_manage`, `space_list` filtrage
+- `src/live_mem/tools/backup.py` — `backup_restore` et `backup_delete` en `check_manage`, `backup_list` filtrage
+- `src/live_mem/server.py` — migration v1.5.0 au démarrage
+- `scripts/cli/commands.py` — `VALID_PERMISSIONS` mis à jour
+- `scripts/cli/shell.py` — `_VALID_PERMS`, autocomplétion, messages d'aide
+- `VERSION`, `__init__.py`, `CHANGELOG.md`, `GUIDE_INTEGRATION_CLINE.md`
+
+---
+
 ## [1.4.1] — 2026-04-11
 
 ### Corrigé

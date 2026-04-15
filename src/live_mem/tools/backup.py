@@ -5,11 +5,11 @@ Outils MCP — Catégorie Backup (5 outils).
 Sauvegarde et restauration d'espaces mémoire.
 
 Permissions :
-    - backup_create   ✏️ (write) — Crée un snapshot d'espace
-    - backup_list     🔑 (read)  — Liste les backups disponibles
-    - backup_restore  👑 (admin) — Restaure un espace depuis un backup
-    - backup_download 🔑 (read)  — Télécharge un backup (tar.gz base64)
-    - backup_delete   👑 (admin) — Supprime un backup
+    - backup_create   ✏️ (write)   — Crée un snapshot d'espace
+    - backup_list     🔑 (read)    — Liste les backups disponibles
+    - backup_restore  🔧 (manage)  — Restaure un espace depuis un backup
+    - backup_download 🔑 (read)    — Télécharge un backup (tar.gz base64)
+    - backup_delete   🔧 (manage)  — Supprime un backup
 
 Les backups sont des snapshots complets stockés dans _backups/ sur S3.
 Voir S3_DATA_MODEL.md pour l'arborescence.
@@ -113,9 +113,10 @@ def register(mcp: FastMCP) -> int:
 
             # Filtrage par space_ids du token (alignement Graph Memory v0.7.0)
             # Un client ne doit voir que les backups des spaces autorisés.
-            # Admin bypass (allowed_resources vide = accès à tous).
+            # Admin bypass. Non-admin + allowed=[] → aucun backup (v1.5.0).
+            permissions = token_info.get("permissions", [])
             allowed = token_info.get("allowed_resources", [])
-            if allowed and result.get("status") == "ok" and not space_id:
+            if "admin" not in permissions and result.get("status") == "ok" and not space_id:
                 filtered = [
                     b for b in result.get("backups", [])
                     if b.get("space_id", b.get("backup_id", "").split("/")[0]) in allowed
@@ -147,13 +148,13 @@ def register(mcp: FastMCP) -> int:
         Returns:
             Nombre de fichiers restaurés
         """
-        from ..auth.context import check_admin_permission
+        from ..auth.context import check_manage_permission
         from ..core.backup import get_backup_service
 
         try:
-            admin_err = check_admin_permission()
-            if admin_err:
-                return admin_err
+            manage_err = check_manage_permission()
+            if manage_err:
+                return manage_err
 
             if not confirm:
                 return {
@@ -213,13 +214,13 @@ def register(mcp: FastMCP) -> int:
         Returns:
             Nombre de fichiers supprimés
         """
-        from ..auth.context import check_admin_permission
+        from ..auth.context import check_manage_permission
         from ..core.backup import get_backup_service
 
         try:
-            admin_err = check_admin_permission()
-            if admin_err:
-                return admin_err
+            manage_err = check_manage_permission()
+            if manage_err:
+                return manage_err
 
             if not confirm:
                 return {

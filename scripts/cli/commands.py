@@ -425,7 +425,7 @@ def token_grp():
 
 # Niveaux de permissions valides (du moins au plus permissif)
 VALID_PERMISSIONS = click.Choice(
-    ["read", "read,write", "read,write,admin"],
+    ["read", "read,write", "read,write,manage", "read,write,manage,admin"],
     case_sensitive=False,
 )
 
@@ -433,7 +433,7 @@ VALID_PERMISSIONS = click.Choice(
 @token_grp.command("create")
 @click.argument("name")
 @click.option("--permissions", "-p", type=VALID_PERMISSIONS, required=True,
-              help="Permissions : read | read,write | read,write,admin")
+              help="Permissions : read | read,write | read,write,manage | read,write,manage,admin")
 @click.option("--space-ids", default="", help="Espaces autorisés (virgules)")
 @click.option("--expires-in-days", default=0, help="Expiration (0=jamais)")
 @click.option("--email", "-e", default="", help="Email du propriétaire")
@@ -446,13 +446,15 @@ def token_create_cmd(ctx, name, permissions, space_ids, expires_in_days, email, 
     Exemples :
       token create KSE -p read,write --email kevin@example.com
       token create bot-ci --permissions read
-      token create admin-ops -p read,write,admin
+      token create ops-maint -p read,write,manage
+      token create admin-ops -p read,write,manage,admin
 
     \b
     Permissions possibles :
-      read             — Lecture seule
-      read,write       — Lecture + écriture (notes, consolidation, espaces)
-      read,write,admin — Accès complet (tokens, suppression, GC)
+      read                    — Lecture seule
+      read,write              — Lecture + écriture (notes, consolidation, espaces)
+      read,write,manage       — + maintenance (bank write/delete/repair, space delete)
+      read,write,manage,admin — Accès complet (tokens, GC, sans restriction de space)
     """
     _run_tool(ctx, "admin_create_token", {
         "name": name, "permissions": permissions,
@@ -464,7 +466,7 @@ def token_create_cmd(ctx, name, permissions, space_ids, expires_in_days, email, 
 @token_grp.command("update")
 @click.argument("token_hash")
 @click.option("--permissions", "-p", type=VALID_PERMISSIONS, default="",
-              help="Nouvelles permissions (read | read,write | read,write,admin)")
+              help="Nouvelles permissions (read | read,write | read,write,manage | read,write,manage,admin)")
 @click.option("--space-ids", "-s", default="",
               help="Nouveaux espaces autorisés (virgules, vide=tous)")
 @click.option("--email", "-e", default="", help="Email du propriétaire")
