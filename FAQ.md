@@ -62,6 +62,64 @@ Oui ! `live_read(space_id="mon-projet")` retourne les notes de TOUS les agents. 
 
 ---
 
+## Permissions et sécurité
+
+### Quels sont les niveaux de permission ?
+
+Depuis **v1.5.0**, il y a 4 niveaux hiérarchiques :
+
+| Niveau      | Inclut       | Accès                                                                 |
+| ----------- | ------------ | --------------------------------------------------------------------- |
+| **read**    | —            | Lecture : `bank_read`, `live_read`, `space_info`, `backup_list`, etc. |
+| **write**   | read         | Écriture : `live_note`, `bank_consolidate`, `space_create`, etc.     |
+| **manage**  | write + read | Maintenance : `bank_write`, `bank_delete`, `bank_repair`, `bank_compact`, `space_delete`, `space_update_rules`, `backup_restore`, `backup_delete` |
+| **admin**   | manage + write + read | Administration : `admin_create_token`, `admin_gc_notes`, etc. |
+
+Un token `write` ne peut **pas** modifier directement les fichiers bank ni supprimer des espaces — il faut `manage` ou `admin`.
+
+### Comment restreindre un token à certains espaces ?
+
+Chaque token a un champ `space_ids` qui liste les espaces autorisés :
+
+```bash
+# Restreindre KSE à 3 espaces
+python scripts/mcp_cli.py token update sha256:363... -p "read,write" -s "live-mem,graph-mem,mcp-office"
+```
+
+**Sémantique de `space_ids` (v1.5.0+)** :
+- `space_ids = ["a", "b"]` → accès uniquement à ces espaces
+- `space_ids = []` pour un **non-admin** → **aucun accès** (changed in v1.5.0, avant = tout)
+- `space_ids = []` pour un **admin** → accès à **tout** (inchangé)
+
+### Que se passe-t-il quand un token crée un nouveau space ?
+
+Le space est **automatiquement ajouté** au `space_ids` du token (via `add_space_to_token()`). Ainsi un token restreint à `["projet-a"]` qui crée `projet-b` se retrouve avec `["projet-a", "projet-b"]`. Pas de deadlock UX.
+
+### Comment ajouter la permission `manage` à un token ?
+
+```bash
+python scripts/mcp_cli.py token update sha256:xxx -p "read,write,manage"
+```
+
+⚠️ La mise à jour des permissions **remplace** la liste complète — il faut toujours inclure `read,write` en plus de `manage`.
+
+### Que s'est-il passé lors de la migration v1.5.0 ?
+
+Avant v1.5.0, `space_ids=[]` signifiait "accès à tout". Depuis v1.5.0, ça signifie "aucun accès" (pour les non-admin).
+
+**Migration automatique au démarrage** : tous les tokens non-admin ayant `space_ids=[]` se sont vu assigner automatiquement la liste de **tous les espaces existants**. Aucune perte d'accès.
+
+### Puis-je donner les droits admin à un token ?
+
+Oui, mais avec prudence :
+```bash
+python scripts/mcp_cli.py token update sha256:xxx -p "read,write,manage,admin"
+```
+
+Un token admin peut gérer les tokens des autres, consolider les notes de tous les agents, et exécuter le GC. Il voit tous les espaces quel que soit son `space_ids`.
+
+---
+
 ## Consolidation
 
 ### Comment fonctionne la consolidation ?
