@@ -14,11 +14,20 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
 ### Ajouté
 - **14 tests unitaires de détection hiérarchique** dans `test_dedup_fix.py` — couvrent : faux doublons (### sous ## différents), vrais doublons (même parent), profondeur 3 niveaux, mix vrais/faux, algorithme itératif, préservation du contenu non-dupliqué.
+- **Template Product Management Memory Bank v1.1.0** (PR #4) — Nouveau modèle de rules `RULES/product.management.memory.bank.md` (390 lignes) pour les équipes Produit (Product Management, Product Design, UX Writing). Hiérarchie de 10+ fichiers obligatoires (`productVision`, `portfolio`, `marketIntelligence`, `userKnowledge`, `stakeholders`, `designSystem`, `communicationGuide`, `engineeringContext`, `discoveryPlaybook`, `activeContext`, `roadmapProgress`) + fichiers dynamiques (`persona-[name].md`, `framework-[name].md`). **6 templates de rules** disponibles dans `RULES/` (était 5).
 
-### Fichiers modifiés (4)
+### Amélioré
+- **CLI : unwrap ExceptionGroup/TaskGroup** (PR #5) — Le SDK MCP utilise des `anyio.TaskGroup` qui encapsulent les erreurs HTTP (ex: 401) dans un `ExceptionGroup`. L'erreur réelle était masquée par un message générique. La CLI déroule désormais récursivement les `BaseExceptionGroup` pour afficher la cause racine.
+- **CLI : acceptation du statut `degraded`** (PR #5) — `_run_tool()` considère désormais `degraded` comme un statut de succès (en plus de `ok`, `healthy`, `created`, etc.), évitant un faux message d'erreur quand le health check retourne un service partiellement disponible.
+
+### Fichiers modifiés (8)
 - `src/live_mem/core/consolidator.py` — `_detect_duplicates()` hiérarchique, `_deduplicate_content()` fast-paths
 - `scripts/test_dedup_fix.py` — 14 tests unittest (réécriture complète)
 - `scripts/test_bank_compact.py` — 7 tests corrigés (limites universelles)
+- `scripts/cli/client.py` — Unwrap `BaseExceptionGroup` dans le handler d'erreur MCP (PR #5)
+- `scripts/cli/commands.py` — Ajout de `degraded` dans les statuts de succès (PR #5)
+- `RULES/product.management.memory.bank.md` — Nouveau template Product Management (PR #4)
+- `RULES/README.md` — Ajout du template Product Management dans le catalogue
 - `VERSION`, `__init__.py`, `CHANGELOG.md`, `README.md`, `README.en.md`
 
 ---
