@@ -5,6 +5,24 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
 ---
 
+## [1.5.1] — 2026-04-22
+
+### Corrigé
+- **Détection hiérarchique des doublons** — `_detect_duplicates()` comparait les headings de façon plate : deux `### X` sous des `## A` et `## B` différents étaient faussement détectés comme doublons et fusionnés via LLM, corrompant la bank à chaque consolidation. Fix : chemin hiérarchique complet (`## Parent A > ### Child > #### Grandchild`), supportant la profondeur arbitraire.
+- **Optimisation performance dédup** — Ajout de 2 fast-paths dans `_deduplicate_content()` qui évitent l'appel LLM quand c'est inutile : (1) versions identiques → garder la dernière, (2) sous-ensemble de lignes → garder la version la plus complète. Comparaison au niveau des lignes (`issubset`) et non des sous-chaînes (`in`) pour éviter les faux positifs.
+- **Tests obsolètes corrigés** — 7 tests dans `test_bank_compact.py` mis à jour pour refléter la limite universelle `BANK_FILE_MAX_SIZE=15360` et les instructions de compaction génériques (v1.4.0+).
+
+### Ajouté
+- **14 tests unitaires de détection hiérarchique** dans `test_dedup_fix.py` — couvrent : faux doublons (### sous ## différents), vrais doublons (même parent), profondeur 3 niveaux, mix vrais/faux, algorithme itératif, préservation du contenu non-dupliqué.
+
+### Fichiers modifiés (4)
+- `src/live_mem/core/consolidator.py` — `_detect_duplicates()` hiérarchique, `_deduplicate_content()` fast-paths
+- `scripts/test_dedup_fix.py` — 14 tests unittest (réécriture complète)
+- `scripts/test_bank_compact.py` — 7 tests corrigés (limites universelles)
+- `VERSION`, `__init__.py`, `CHANGELOG.md`, `README.md`, `README.en.md`
+
+---
+
 ## [1.5.0] — 2026-04-15
 
 ### Ajouté

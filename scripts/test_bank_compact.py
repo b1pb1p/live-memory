@@ -57,21 +57,24 @@ class TestGetMaxSizeForFile(unittest.TestCase):
             self.svc = ConsolidatorService()
 
     def test_active_context(self):
-        self.assertEqual(self.svc._get_max_size_for_file("activeContext.md"), 8192)
+        """Limite universelle — pas de traitement spécial par nom de fichier."""
+        self.assertEqual(self.svc._get_max_size_for_file("activeContext.md"), 15360)
 
     def test_active_context_case_insensitive(self):
-        self.assertEqual(self.svc._get_max_size_for_file("ActiveContext.md"), 8192)
+        """Limite universelle — insensible au nom."""
+        self.assertEqual(self.svc._get_max_size_for_file("ActiveContext.md"), 15360)
 
     def test_progress(self):
-        self.assertEqual(self.svc._get_max_size_for_file("progress.md"), 20480)
+        """Limite universelle — pas de traitement spécial pour progress.md."""
+        self.assertEqual(self.svc._get_max_size_for_file("progress.md"), 15360)
 
     def test_other_file(self):
         self.assertEqual(self.svc._get_max_size_for_file("techContext.md"), 15360)
 
     def test_subdirectory_file(self):
-        """Les fichiers en sous-dossier utilisent le basename."""
+        """Limite universelle — insensible aux sous-dossiers."""
         self.assertEqual(
-            self.svc._get_max_size_for_file("subdir/activeContext.md"), 8192
+            self.svc._get_max_size_for_file("subdir/activeContext.md"), 15360
         )
 
     def test_unknown_file(self):
@@ -218,9 +221,8 @@ class TestCompactSingleFile(unittest.TestCase):
             from live_mem.core.consolidator import ConsolidatorService
             self.svc = ConsolidatorService()
 
-    def test_active_context_prompt_contains_specific_instructions(self):
-        """Le prompt pour activeContext.md contient les instructions spécifiques."""
-        # Mock LLM response
+    def test_active_context_prompt_contains_generic_instructions(self):
+        """Le prompt de compaction contient les instructions génériques et le nom du fichier."""
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = "# activeContext.md\n\n## Focus\nCompacted"
@@ -228,22 +230,22 @@ class TestCompactSingleFile(unittest.TestCase):
 
         result = asyncio.run(
             self.svc._compact_single_file(
-                "activeContext.md", "x" * 50000, 8192, "rules"
+                "activeContext.md", "x" * 50000, 15360, "rules"
             )
         )
 
-        # Vérifier que le LLM a été appelé
         self.svc._client.chat.completions.create.assert_called_once()
         call_args = self.svc._client.chat.completions.create.call_args
         prompt = call_args.kwargs.get("messages", call_args[1].get("messages", []))[0]["content"]
 
-        # Vérifier les instructions spécifiques
-        self.assertIn("sessions terminées", prompt)
+        # Vérifier les instructions génériques (v1.4.0+)
+        self.assertIn("redondantes", prompt)
         self.assertIn("activeContext.md", prompt)
+        self.assertIn("RULES DE RÉFÉRENCE", prompt)
         self.assertIsNotNone(result)
 
-    def test_progress_prompt_contains_specific_instructions(self):
-        """Le prompt pour progress.md mentionne la règle des 30 jours."""
+    def test_progress_prompt_contains_generic_instructions(self):
+        """Le prompt de compaction contient les instructions génériques."""
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = "# progress.md\n\nCompacted"
@@ -251,13 +253,15 @@ class TestCompactSingleFile(unittest.TestCase):
 
         result = asyncio.run(
             self.svc._compact_single_file(
-                "progress.md", "x" * 25000, 20480, "rules"
+                "progress.md", "x" * 25000, 15360, "rules"
             )
         )
 
         call_args = self.svc._client.chat.completions.create.call_args
         prompt = call_args.kwargs.get("messages", call_args[1].get("messages", []))[0]["content"]
-        self.assertIn("30 jours", prompt)
+        # Instructions génériques (v1.4.0+ : plus de prompts spécifiques par fichier)
+        self.assertIn("obsolètes", prompt)
+        self.assertIn("jalon", prompt)
         self.assertIsNotNone(result)
 
     def test_llm_failure_returns_none(self):
@@ -370,9 +374,9 @@ class TestCompactBank(unittest.TestCase):
         mock_storage = MagicMock()
         mock_storage.get_json = AsyncMock(return_value={"created_at": "2026-01-01"})
         mock_storage.list_and_get = AsyncMock(return_value=[
-            {"key": "s/bank/activeContext.md", "content": "x" * 10000},
-            {"key": "s/bank/progress.md", "content": "x" * 5000},
-            {"key": "s/bank/techContext.md", "content": "x" * 3000},
+            {"key": "s/bank/activeContext.md", "content": "x" * 20000},  # > 15360
+            {"key": "s/bank/progress.md", "content": "x" * 5000},       # < 15360
+            {"key": "s/bank/techContext.md", "content": "x" * 3000},     # < 15360
         ])
         mock_storage.get = AsyncMock(return_value="")
 
@@ -380,11 +384,11 @@ class TestCompactBank(unittest.TestCase):
             result = asyncio.run(self.svc.compact_bank("s", dry_run=True))
 
         self.assertEqual(len(result["files"]), 3)
-        # activeContext 10000 > 8192 → over_limit
+        # activeContext 20000 > 15360 → over_limit
         ac = next(f for f in result["files"] if "activeContext" in f["filename"])
         self.assertTrue(ac["over_limit"])
         self.assertGreater(ac["ratio"], 1.0)
-        # progress 5000 < 20480 → OK
+        # progress 5000 < 15360 → OK
         pr = next(f for f in result["files"] if "progress" in f["filename"])
         self.assertFalse(pr["over_limit"])
 
