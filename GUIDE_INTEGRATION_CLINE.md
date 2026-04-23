@@ -109,13 +109,15 @@ Dans le fichier `cline_mcp_settings.json` qui s'ouvre, ajoutez la configuration 
       "url": "http://localhost:8080/mcp",
       "headers": {
         "Authorization": "Bearer lm_VOTRE_TOKEN_ICI"
-      }
+      },
+      "timeout": 600
     }
   }
 }
 ```
 
 > **Remplacez** `lm_VOTRE_TOKEN_ICI` par le token obtenu à l'étape 2.
+> **⚠️ Le paramètre `timeout` est critique** : La consolidation LLM peut prendre plus de 60 secondes (le timeout par défaut de Cline). Il est indispensable de l'augmenter à 600 secondes, en conformité avec votre configuration `.env`.
 
 ### 3.3 Où se trouve le fichier de config ?
 
@@ -146,7 +148,8 @@ Si Live Memory est déployé sur un serveur avec HTTPS :
       "url": "https://live-mem.votre-domaine.com/mcp",
       "headers": {
         "Authorization": "Bearer lm_VOTRE_TOKEN_ICI"
-      }
+      },
+      "timeout": 600
     }
   }
 }
@@ -432,9 +435,12 @@ Le token est restreint à certains espaces (`space_ids`). Soit :
 
 Ajoutez des **Custom Instructions** explicites (voir [Étape 5](#-étape-5--donner-des-instructions-à-cline)). Sans instructions, Cline ne sait pas qu'il doit utiliser ces outils.
 
-### La consolidation est lente (> 60 secondes)
+### Erreur de timeout / La consolidation échoue après 60 secondes
 
-C'est normal pour un gros batch de notes. Le LLM traite toutes les notes en un seul appel. Le timeout par défaut est 600 secondes. Vous pouvez le suivre dans les logs :
+Par défaut, Cline et Claude Desktop interrompent les requêtes MCP après 60 secondes, ce qui est souvent insuffisant pour une consolidation (le LLM peut prendre plusieurs minutes).
+
+1. Vérifiez que vous avez bien ajouté `"timeout": 600` dans la configuration MCP de votre agent, en conformité avec le timeout serveur configuré dans votre fichier `.env`.
+2. Vous pouvez suivre l'avancement réel côté serveur dans les logs :
 
 ```bash
 docker compose logs -f live-mem-service --tail 20
@@ -466,11 +472,14 @@ La configuration est similaire. Éditez le fichier `claude_desktop_config.json` 
       "url": "http://localhost:8080/mcp",
       "headers": {
         "Authorization": "Bearer lm_VOTRE_TOKEN_ICI"
-      }
+      },
+      "timeout": 600
     }
   }
 }
 ```
+
+> **⚠️ N'oubliez pas le paramètre `timeout`** pour autoriser les temps de traitement longs lors de la consolidation.
 
 Redémarrez Claude Desktop après la modification. Les 38 outils Live Memory apparaîtront dans la liste des outils disponibles.
 

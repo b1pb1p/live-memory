@@ -33,7 +33,8 @@ TOKEN_PREFIX = "lm_"
 TOKENS_KEY = "_system/tokens.json"
 
 # Permissions reconnues par le système d'authentification
-VALID_PERMISSIONS = {"read", "write", "admin"}
+# Hiérarchie inclusive : admin ⊃ manage ⊃ write ⊃ read
+VALID_PERMISSIONS = {"read", "write", "manage", "admin"}
 
 
 class TokenService:
@@ -338,12 +339,12 @@ class TokenService:
         """
         Ajoute un space_id à la liste des espaces autorisés d'un token.
 
-        Appelé automatiquement par space_create quand un client restreint
-        crée un nouvel espace. Sans cet ajout, le client ne pourrait pas
-        accéder au space qu'il vient de créer (deadlock UX).
+        Appelé automatiquement par space_create quand un client crée un
+        nouvel espace. Sans cet ajout, le client ne pourrait pas accéder
+        au space qu'il vient de créer (deadlock UX).
 
-        Si le token a space_ids=[] (accès à tous), cette méthode ne fait rien
-        car le token a déjà accès à tous les espaces.
+        Depuis v1.5.0, space_ids=[] signifie "aucun accès" (pas "tous").
+        Cette méthode ajoute toujours le space, même si la liste est vide.
 
         Args:
             token_hash: Hash SHA-256 du token courant
@@ -357,12 +358,6 @@ class TokenService:
 
             for t in store.tokens:
                 if t.hash == token_hash:
-                    # Si le token a déjà accès à tous les espaces, rien à faire
-                    if not t.space_ids:
-                        return {
-                            "status": "skipped",
-                            "message": "Token has access to all spaces",
-                        }
                     # Si le space est déjà dans la liste, rien à faire
                     if space_id in t.space_ids:
                         return {
@@ -431,6 +426,54 @@ class TokenService:
             }
 
         return None  # Token inconnu
+
+    async def migrate_empty_space_ids(self, all_space_ids: list[str]) -> dict:
+        """
+        Migration v1.5.0 : peuple les tokens avec space_ids=[] existants.
+
+        Depuis v1.5.0, space_ids=[] signifie "aucun accès" (au lieu de "tous").
+        Cette migration assigne à chaque token non-admin ayant space_ids=[]
+        la liste complète des espaces existants, pour préserver leur accès.
+
+        Les tokens admin ne sont pas affectés (admin bypass check_access).
+
+        Args:
+            all_space_ids: Liste de tous les space_ids existants
+
+        Returns:
+            {"status": "ok", "migrated": N, "skipped": M}
+        """
+        async with get_lock_manager().tokens:
+            store = await self._load_store()
+            migrated = 0
+            skipped = 0
+
+            for t in store.tokens:
+                if t.revoked:
+                    skipped += 1
+                    continue
+                # Admin tokens n'ont pas besoin de space_ids (bypass)
+                if "admin" in t.permissions:
+                    skipped += 1
+                    continue
+                # Déjà peuplé → rien à faire
+                if t.space_ids:
+                    skipped += 1
+                    continue
+                # Token avec space_ids=[] (ancien "accès à tous")
+                # → leur donner tous les espaces existants
+                t.space_ids = list(all_space_ids)
+                migrated += 1
+
+            if migrated > 0:
+                await self._save_store(store)
+
+        return {
+            "status": "ok",
+            "migrated": migrated,
+            "skipped": skipped,
+            "total_spaces": len(all_space_ids),
+        }
 
     # ─────────────────────────────────────────────────────────
     # Helpers internes

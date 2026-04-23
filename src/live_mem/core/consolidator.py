@@ -919,8 +919,45 @@ Retourne un JSON avec cette structure exacte :
                 len(indices),
             )
 
-            # Appeler le LLM pour fusionner
-            merged = await self._merge_sections_via_llm(heading, versions)
+            # ── Optimisation : skip LLM si les versions sont identiques
+            # ou si l'une est un sous-ensemble de l'autre ──
+            stripped = [v.strip() for v in versions]
+            unique = set(stripped)
+
+            if len(unique) == 1:
+                # Toutes les versions identiques → garder la dernière, pas d'appel LLM
+                logger.info(
+                    "DEDUP %s: '%s' — %d versions identiques, skip LLM",
+                    filename, heading, len(indices),
+                )
+                merged = stripped[-1]
+            elif len(unique) == 2:
+                # Vérifier si l'une est un sous-ensemble de lignes de l'autre.
+                # On compare au niveau des LIGNES (pas des sous-chaînes) pour
+                # éviter les faux positifs comme "OK" in "Jalon OK terminé".
+                short_v, long_v = sorted(unique, key=len)
+                short_lines = {ln.strip() for ln in short_v.splitlines() if ln.strip()}
+                long_lines = {ln.strip() for ln in long_v.splitlines() if ln.strip()}
+                if short_lines and short_lines.issubset(long_lines):
+                    merged = long_v  # Garder la version la plus complète
+                    logger.info(
+                        "DEDUP %s: '%s' — %d/%d lignes incluses dans la version longue, skip LLM",
+                        filename, heading, len(short_lines), len(long_lines),
+                    )
+                else:
+                    # Versions réellement différentes → appel LLM
+                    logger.warning(
+                        "DEDUP %s: heading '%s' trouvé %d fois — fusion via LLM",
+                        filename, heading, len(indices),
+                    )
+                    merged = await self._merge_sections_via_llm(heading, versions)
+            else:
+                # 3+ versions différentes → appel LLM
+                logger.warning(
+                    "DEDUP %s: heading '%s' trouvé %d fois — fusion via LLM",
+                    filename, heading, len(indices),
+                )
+                merged = await self._merge_sections_via_llm(heading, versions)
 
             if merged is not None:
                 # Garder la DERNIÈRE occurrence, supprimer les précédentes
@@ -1725,22 +1762,57 @@ def _detect_duplicates(content: str) -> dict[str, list[int]]:
     """
     Détecte les sections dupliquées dans un fichier Markdown.
 
+    Tient compte de la HIÉRARCHIE : deux headings identiques (ex: ### X)
+    sous des parents différents (ex: ## A et ## B) sont des sections
+    DISTINCTES, pas des doublons.
+
+    L'identifiant complet d'une section est construit en préfixant
+    le heading avec son parent hiérarchique le plus proche (heading
+    de niveau strictement supérieur trouvé en remontant).
+
     Returns:
-        Dict heading → [index1, index2, ...] pour les headings qui
-        apparaissent plus d'une fois. Vide si pas de doublons.
+        Dict heading_key → [index1, index2, ...] pour les headings qui
+        apparaissent plus d'une fois sous le même parent.
+        Vide si pas de doublons.
     """
     sections = _parse_sections(content)
 
-    # Compter les occurrences de chaque heading exact
+    # Compter les occurrences de chaque heading en tenant compte du chemin
+    # hiérarchique COMPLET (tous les ancêtres, pas seulement le parent direct).
+    # Ex: "## Parent A > ### Child > #### Grandchild"
     heading_indices: dict[str, list[int]] = {}
     for i, sec in enumerate(sections):
         h = sec["heading"].strip()
-        if h:  # Ignorer le préambule (heading vide)
-            if h not in heading_indices:
-                heading_indices[h] = []
-            heading_indices[h].append(i)
+        if not h:  # Ignorer le préambule (heading vide)
+            continue
 
-    # Ne garder que les headings dupliqués
+        level = sec["level"]
+
+        # Construire le chemin hiérarchique complet en remontant
+        # vers tous les ancêtres (niveaux strictement décroissants)
+        ancestors = []
+        current_level = level
+        if level > 1:
+            for j in range(i - 1, -1, -1):
+                jlevel = sections[j]["level"]
+                if jlevel > 0 and jlevel < current_level:
+                    ancestors.insert(0, sections[j]["heading"].strip())
+                    current_level = jlevel
+                    if current_level <= 1:
+                        break
+
+        # Identifiant hiérarchique complet :
+        # "## Parent A > ### Child > #### Grandchild"
+        if ancestors:
+            full_key = " > ".join(ancestors) + " > " + h
+        else:
+            full_key = h
+
+        if full_key not in heading_indices:
+            heading_indices[full_key] = []
+        heading_indices[full_key].append(i)
+
+    # Ne garder que les headings dupliqués (même heading + même parent)
     return {h: indices for h, indices in heading_indices.items() if len(indices) > 1}
 
 

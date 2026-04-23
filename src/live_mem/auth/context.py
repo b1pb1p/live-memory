@@ -3,9 +3,9 @@
 Helpers d'authentification basés sur contextvars.
 
 Le middleware ASGI injecte les infos du token dans les contextvars.
-Les outils MCP appellent check_access(), check_write_permission()
-et check_admin_permission() pour vérifier les permissions sans
-dépendre du framework HTTP.
+Les outils MCP appellent check_access(), check_write_permission(),
+check_manage_permission() et check_admin_permission() pour vérifier
+les permissions sans dépendre du framework HTTP.
 
 Architecture :
     Middleware ASGI → injecte current_token_info (contextvar)
@@ -13,10 +13,14 @@ Architecture :
 
 Voir AUTH_AND_COLLABORATION.md pour la matrice des permissions.
 
-3 niveaux de permission :
-    - read  (🔑) : lecture des espaces et notes
-    - write (✏️) : écriture de notes + consolidation
-    - admin (👑) : suppression d'espaces, backup restore, gestion tokens
+4 niveaux de permission (hiérarchie inclusive) :
+    admin ⊃ manage ⊃ write ⊃ read
+
+    - read    (🔑) : lecture des espaces et notes
+    - write   (✏️) : écriture de notes + consolidation de ses propres notes
+    - manage  (🔧) : maintenance bank (write/delete/repair/compact), space delete,
+                      update rules, backup restore/delete
+    - admin   (👑) : gestion tokens, GC, accès total sans restriction de space
 """
 
 import re
@@ -72,8 +76,11 @@ def check_access(resource_id: str) -> Optional[dict]:
         return None
 
     # Vérifier que l'espace est dans la liste autorisée
+    # IMPORTANT (v1.5.0) : space_ids=[] signifie "aucun accès" pour les non-admin.
+    # Un token fraîchement créé n'a accès à rien d'existant — il peut créer
+    # ses propres spaces (auto-ajoutés à sa liste via add_space_to_token).
     allowed = token_info.get("allowed_resources", [])
-    if allowed and resource_id not in allowed:
+    if not allowed or resource_id not in allowed:
         return {
             "status": "error",
             "message": f"Accès refusé à l'espace '{resource_id}'",
@@ -86,8 +93,10 @@ def check_write_permission() -> Optional[dict]:
     """
     Vérifie que le token courant a la permission d'écriture.
 
+    Hiérarchie : admin ⊃ manage ⊃ write → tous acceptés.
+
     Nécessaire pour : live_note, bank_consolidate, space_create,
-    backup_create.
+    space_update, backup_create, graph_*.
 
     Returns:
         None si OK, dict {"status": "error", ...} si refusé
@@ -98,7 +107,7 @@ def check_write_permission() -> Optional[dict]:
         return {"status": "error", "message": "Authentification requise"}
 
     permissions = token_info.get("permissions", [])
-    if "write" in permissions or "admin" in permissions:
+    if "write" in permissions or "manage" in permissions or "admin" in permissions:
         return None
 
     return {
@@ -107,13 +116,39 @@ def check_write_permission() -> Optional[dict]:
     }
 
 
+def check_manage_permission() -> Optional[dict]:
+    """
+    Vérifie que le token courant a la permission de gestion (manage).
+
+    Hiérarchie : admin ⊃ manage → les deux acceptés.
+
+    Nécessaire pour : bank_write, bank_delete, bank_repair, bank_compact,
+    space_delete, space_update_rules, backup_restore, backup_delete.
+
+    Returns:
+        None si OK, dict {"status": "error", ...} si refusé
+    """
+    token_info = current_token_info.get()
+
+    if token_info is None:
+        return {"status": "error", "message": "Authentification requise"}
+
+    permissions = token_info.get("permissions", [])
+    if "manage" in permissions or "admin" in permissions:
+        return None
+
+    return {
+        "status": "error",
+        "message": "Permission 'manage' requise pour cette opération",
+    }
+
+
 def check_admin_permission() -> Optional[dict]:
     """
     Vérifie que le token courant a la permission admin.
 
-    Nécessaire pour : space_delete, backup_restore, backup_delete,
-    admin_create_token, admin_list_tokens, admin_revoke_token,
-    admin_update_token.
+    Nécessaire pour : admin_create_token, admin_list_tokens,
+    admin_revoke_token, admin_update_token, admin_gc_notes.
 
     Returns:
         None si OK, dict {"status": "error", ...} si refusé

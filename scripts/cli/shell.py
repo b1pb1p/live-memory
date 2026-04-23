@@ -78,7 +78,7 @@ SHELL_COMMANDS = {
     "bank delete": "Supprimer un fichier bank (bank delete <space> <file>) admin",
     "bank repair": "Réparer noms corrompus (bank repair <space> [--apply]) admin",
     "bank compact": "Compacter fichiers surdimensionnés (bank compact <space> [--apply]) admin",
-    "token create": "Créer un token (token create <name> -p <read|read,write|read,write,admin> [--email <email>])",
+    "token create": "Créer un token (token create <name> -p <read|read,write|read,write,manage|...admin> [--email <email>])",
     "token update": "Modifier un token (token update <hash> --permissions <perms> --space-ids <ids>)",
     "token list": "Lister les tokens",
     "token revoke": "Révoquer un token (token revoke <hash>)",
@@ -570,7 +570,7 @@ async def _handle_bank(client, args, json_out):
 
 
 # Permissions valides (partagé avec le handler token)
-_VALID_PERMS = {"read", "read,write", "read,write,admin"}
+_VALID_PERMS = {"read", "read,write", "read,write,manage", "read,write,manage,admin"}
 
 
 def _validate_permissions(perms: str) -> bool:
@@ -612,13 +612,13 @@ async def _handle_token(client, args, json_out):
                 i += 1
         if not perms:
             show_error(
-                "Permissions requises : --permissions/-p <read|read,write|read,write,admin>"
+                "Permissions requises : --permissions/-p <read|read,write|read,write,manage|read,write,manage,admin>"
             )
             show_warning("Ex: token create KSE -p read,write --email kevin@example.com")
             return
         if not _validate_permissions(perms):
             show_error(f"Permissions invalides : '{perms}'")
-            show_warning("Valeurs acceptées : read | read,write | read,write,admin")
+            show_warning("Valeurs acceptées : read | read,write | read,write,manage | read,write,manage,admin")
             return
         mcp_args = {"name": name, "permissions": perms}
         if email:
@@ -645,7 +645,7 @@ async def _handle_token(client, args, json_out):
                 if not _validate_permissions(perms):
                     show_error(f"Permissions invalides : '{perms}'")
                     show_warning(
-                        "Valeurs acceptées : read | read,write | read,write,admin"
+                        "Valeurs acceptées : read | read,write | read,write,manage | read,write,manage,admin"
                     )
                     return
                 mcp_args["permissions"] = perms
@@ -894,7 +894,8 @@ async def run_shell(url: str, token: str):
         "-c",
         "read",
         "read,write",
-        "read,write,admin",
+        "read,write,manage",
+        "read,write,manage,admin",
     ]
     completer = WordCompleter(words, ignore_case=True)
 

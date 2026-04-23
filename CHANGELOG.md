@@ -5,6 +5,67 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
 ---
 
+## [1.5.1] — 2026-04-22
+
+### Corrigé
+- **Détection hiérarchique des doublons** — `_detect_duplicates()` comparait les headings de façon plate : deux `### X` sous des `## A` et `## B` différents étaient faussement détectés comme doublons et fusionnés via LLM, corrompant la bank à chaque consolidation. Fix : chemin hiérarchique complet (`## Parent A > ### Child > #### Grandchild`), supportant la profondeur arbitraire.
+- **Optimisation performance dédup** — Ajout de 2 fast-paths dans `_deduplicate_content()` qui évitent l'appel LLM quand c'est inutile : (1) versions identiques → garder la dernière, (2) sous-ensemble de lignes → garder la version la plus complète. Comparaison au niveau des lignes (`issubset`) et non des sous-chaînes (`in`) pour éviter les faux positifs.
+- **Tests obsolètes corrigés** — 7 tests dans `test_bank_compact.py` mis à jour pour refléter la limite universelle `BANK_FILE_MAX_SIZE=15360` et les instructions de compaction génériques (v1.4.0+).
+
+### Ajouté
+- **14 tests unitaires de détection hiérarchique** dans `test_dedup_fix.py` — couvrent : faux doublons (### sous ## différents), vrais doublons (même parent), profondeur 3 niveaux, mix vrais/faux, algorithme itératif, préservation du contenu non-dupliqué.
+- **Template Product Management Memory Bank v1.1.0** (PR #4) — Nouveau modèle de rules `RULES/product.management.memory.bank.md` (390 lignes) pour les équipes Produit (Product Management, Product Design, UX Writing). Hiérarchie de 10+ fichiers obligatoires (`productVision`, `portfolio`, `marketIntelligence`, `userKnowledge`, `stakeholders`, `designSystem`, `communicationGuide`, `engineeringContext`, `discoveryPlaybook`, `activeContext`, `roadmapProgress`) + fichiers dynamiques (`persona-[name].md`, `framework-[name].md`). **6 templates de rules** disponibles dans `RULES/` (était 5).
+
+### Amélioré
+- **CLI : unwrap ExceptionGroup/TaskGroup** (PR #5) — Le SDK MCP utilise des `anyio.TaskGroup` qui encapsulent les erreurs HTTP (ex: 401) dans un `ExceptionGroup`. L'erreur réelle était masquée par un message générique. La CLI déroule désormais récursivement les `BaseExceptionGroup` pour afficher la cause racine.
+- **CLI : acceptation du statut `degraded`** (PR #5) — `_run_tool()` considère désormais `degraded` comme un statut de succès (en plus de `ok`, `healthy`, `created`, etc.), évitant un faux message d'erreur quand le health check retourne un service partiellement disponible.
+
+### Fichiers modifiés (8)
+- `src/live_mem/core/consolidator.py` — `_detect_duplicates()` hiérarchique, `_deduplicate_content()` fast-paths
+- `scripts/test_dedup_fix.py` — 14 tests unittest (réécriture complète)
+- `scripts/test_bank_compact.py` — 7 tests corrigés (limites universelles)
+- `scripts/cli/client.py` — Unwrap `BaseExceptionGroup` dans le handler d'erreur MCP (PR #5)
+- `scripts/cli/commands.py` — Ajout de `degraded` dans les statuts de succès (PR #5)
+- `RULES/product.management.memory.bank.md` — Nouveau template Product Management (PR #4)
+- `RULES/README.md` — Ajout du template Product Management dans le catalogue
+- `VERSION`, `__init__.py`, `CHANGELOG.md`, `README.md`, `README.en.md`
+
+---
+
+## [1.5.0] — 2026-04-15
+
+### Ajouté
+- **Permission `manage`** — 4ème niveau de permission dans la hiérarchie : `admin ⊃ manage ⊃ write ⊃ read`.
+  - `manage` donne accès aux opérations de maintenance : `bank_write`, `bank_delete`, `bank_repair`, `bank_compact`, `space_delete`, `space_update_rules`, `backup_restore`, `backup_delete`.
+  - Un agent standard (`write`) ne peut plus manipuler directement les fichiers bank ni supprimer des espaces.
+  - `admin` reste requis pour la gestion des tokens et le GC.
+- **`check_manage_permission()`** dans `auth/context.py` — nouveau helper de vérification.
+- **Migration automatique v1.5.0** au démarrage du serveur — les tokens non-admin ayant `space_ids=[]` se voient assigner tous les espaces existants.
+- **Timeout 600s documenté** dans `GUIDE_INTEGRATION_CLINE.md` — toutes les configurations MCP (Cline et Claude Desktop) incluent désormais `"timeout": 600`.
+
+### Modifié
+- **Sémantique de `space_ids=[]`** — signifie désormais "aucun accès" pour les non-admin (au lieu de "tous"). Un token fraîchement créé n'a accès à rien d'existant — il crée ses propres espaces (auto-ajoutés via `add_space_to_token`).
+- **`add_space_to_token()`** — ajoute toujours le space, même si `space_ids` est vide (anciennement skippé).
+- **`space_list`** — retourne une liste vide pour les non-admin avec `space_ids=[]` (au lieu de tout lister).
+- **`backup_list`** — filtrage adapté pour les non-admin avec `space_ids=[]`.
+- **8 outils remontés en `manage`** :
+  - De `write` → `manage` : `bank_delete`, `bank_repair`, `bank_compact`
+  - De `admin` → `manage` : `bank_write`, `space_delete`, `space_update_rules`, `backup_restore`, `backup_delete`
+- **CLI et shell** — support complet du niveau `manage` dans la validation des permissions et l'autocomplétion.
+
+### Fichiers modifiés (15)
+- `src/live_mem/auth/context.py` — `check_manage_permission()`, docstring 4 niveaux, `check_access()` inversé
+- `src/live_mem/core/tokens.py` — `VALID_PERMISSIONS` + `manage`, `migrate_empty_space_ids()`, `add_space_to_token()` simplifié
+- `src/live_mem/tools/bank.py` — 4 outils passés en `check_manage`
+- `src/live_mem/tools/space.py` — `space_delete` et `space_update_rules` en `check_manage`, `space_list` filtrage
+- `src/live_mem/tools/backup.py` — `backup_restore` et `backup_delete` en `check_manage`, `backup_list` filtrage
+- `src/live_mem/server.py` — migration v1.5.0 au démarrage
+- `scripts/cli/commands.py` — `VALID_PERMISSIONS` mis à jour
+- `scripts/cli/shell.py` — `_VALID_PERMS`, autocomplétion, messages d'aide
+- `VERSION`, `__init__.py`, `CHANGELOG.md`, `GUIDE_INTEGRATION_CLINE.md`
+
+---
+
 ## [1.4.1] — 2026-04-11
 
 ### Corrigé

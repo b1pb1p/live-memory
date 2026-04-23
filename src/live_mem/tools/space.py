@@ -5,15 +5,15 @@ Outils MCP — Catégorie Space (9 outils).
 Gestion des espaces mémoire : créer, lister, inspecter, exporter, supprimer.
 
 Permissions :
-    - space_create        ✏️ (write)  — Crée un nouvel espace
-    - space_update        ✏️ (write)  — Met à jour description/owner
-    - space_update_rules  👑 (admin)  — Met à jour les rules d'un espace
-    - space_list          🔑 (read)   — Liste les espaces accessibles
-    - space_info          🔑 (read)   — Infos détaillées d'un espace
-    - space_rules         🔑 (read)   — Lit les rules
-    - space_summary       🔑 (read)   — Synthèse complète (rules + bank)
-    - space_export        🔑 (read)   — Export tar.gz en base64
-    - space_delete        👑 (admin)  — Supprime un espace (irréversible)
+    - space_create        ✏️ (write)   — Crée un nouvel espace
+    - space_update        ✏️ (write)   — Met à jour description/owner
+    - space_update_rules  🔧 (manage)  — Met à jour les rules d'un espace
+    - space_list          🔑 (read)    — Liste les espaces accessibles
+    - space_info          🔑 (read)    — Infos détaillées d'un espace
+    - space_rules         🔑 (read)    — Lit les rules
+    - space_summary       🔑 (read)    — Synthèse complète (rules + bank)
+    - space_export        🔑 (read)    — Export tar.gz en base64
+    - space_delete        🔧 (manage)  — Supprime un espace (irréversible)
 
 Chaque outil délègue au SpaceService (core/space.py) après vérification
 des permissions via les helpers auth/context.py.
@@ -204,11 +204,11 @@ def register(mcp: FastMCP) -> int:
         rules: Annotated[str, Field(description="Nouveau contenu Markdown des rules")],
     ) -> dict:
         """
-        Met à jour les rules d'un espace (admin only).
+        Met à jour les rules d'un espace (manage).
 
         ⚠️ Les rules sont normalement immuables après création.
         Cet outil permet de les mettre à jour sans devoir
-        supprimer/recréer l'espace. Réservé aux administrateurs.
+        supprimer/recréer l'espace. Réservé aux opérateurs (manage+).
 
         Cas d'usage : correction de rules, migration vers une
         nouvelle version du template, ajout de règles de consolidation.
@@ -220,7 +220,7 @@ def register(mcp: FastMCP) -> int:
         Returns:
             Taille des nouvelles rules
         """
-        from ..auth.context import check_access, check_admin_permission
+        from ..auth.context import check_access, check_manage_permission
         from ..core.space import get_space_service
 
         try:
@@ -228,9 +228,9 @@ def register(mcp: FastMCP) -> int:
             if access_err:
                 return access_err
 
-            admin_err = check_admin_permission()
-            if admin_err:
-                return admin_err
+            manage_err = check_manage_permission()
+            if manage_err:
+                return manage_err
 
             return await get_space_service().update_rules(
                 space_id=space_id,
@@ -261,9 +261,16 @@ def register(mcp: FastMCP) -> int:
             if token_info is None:
                 return {"status": "error", "message": "Authentification requise"}
 
+            permissions = token_info.get("permissions", [])
             allowed = token_info.get("allowed_resources", [])
-            # allowed vide = accès à tous les espaces
-            allowed_ids = allowed if allowed else None
+            # Admin → accès à tous les espaces
+            # Non-admin + allowed vide → aucun espace (v1.5.0)
+            if "admin" in permissions:
+                allowed_ids = None  # Pas de filtre
+            elif not allowed:
+                allowed_ids = []  # Aucun espace
+            else:
+                allowed_ids = allowed
 
             return await get_space_service().list_spaces(allowed_space_ids=allowed_ids)
         except Exception as e:
@@ -412,7 +419,7 @@ def register(mcp: FastMCP) -> int:
 
         ⚠️ ATTENTION : cette opération est destructive et ne peut pas être annulée.
         Le paramètre confirm doit être True pour confirmer la suppression.
-        Seuls les tokens admin peuvent utiliser cet outil.
+        Nécessite la permission manage ou admin.
 
         Args:
             space_id: Identifiant de l'espace à supprimer
@@ -421,18 +428,18 @@ def register(mcp: FastMCP) -> int:
         Returns:
             Confirmation de suppression avec nombre de fichiers supprimés
         """
-        from ..auth.context import check_access, check_admin_permission
+        from ..auth.context import check_access, check_manage_permission
         from ..core.space import get_space_service
 
         try:
-            # Double vérification : accès + admin
+            # Double vérification : accès + manage
             access_err = check_access(space_id)
             if access_err:
                 return access_err
 
-            admin_err = check_admin_permission()
-            if admin_err:
-                return admin_err
+            manage_err = check_manage_permission()
+            if manage_err:
+                return manage_err
 
             # Sécurité : confirm obligatoire
             if not confirm:

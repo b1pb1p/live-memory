@@ -110,10 +110,16 @@ class MCPClient:
 
                     return {"status": "ok", "raw": ""}
 
-        except Exception as e:
+        except BaseException as e:
+            # Unwrap ExceptionGroup / TaskGroup to surface the real error.
+            # The MCP SDK uses anyio TaskGroups; on auth failure (401) the
+            # actual HTTP error is buried inside an ExceptionGroup.
+            cause = e
+            while isinstance(cause, BaseExceptionGroup) and cause.exceptions:
+                cause = cause.exceptions[0]
             return {
                 "status": "error",
-                "message": f"Erreur MCP : {e}",
+                "message": f"Erreur MCP : {cause}",
             }
 
     async def list_tools(self) -> list:
