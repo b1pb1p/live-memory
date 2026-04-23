@@ -43,7 +43,12 @@ def register(mcp: FastMCP) -> int:
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     async def bank_read(
         space_id: Annotated[str, Field(description="Identifiant de l'espace")],
-        filename: Annotated[str, Field(description="Nom du fichier bank (ex: 'activeContext.md', 'progress.md')")],
+        filename: Annotated[
+            str,
+            Field(
+                description="Nom du fichier bank (ex: 'activeContext.md', 'progress.md')"
+            ),
+        ],
     ) -> dict:
         """
         Lit un fichier spécifique de la Memory Bank.
@@ -120,6 +125,7 @@ def register(mcp: FastMCP) -> int:
             }
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "bank")
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -157,6 +163,7 @@ def register(mcp: FastMCP) -> int:
 
             # Lire tous les fichiers bank
             from ..core.storage import bank_relpath
+
             bank_data = await storage.list_and_get(f"{space_id}/bank/")
             files = [
                 {
@@ -178,6 +185,7 @@ def register(mcp: FastMCP) -> int:
             }
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "bank")
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -214,6 +222,7 @@ def register(mcp: FastMCP) -> int:
 
             # Lister les objets bank (sans les .keep)
             from ..core.storage import bank_relpath
+
             objects = await storage.list_objects(f"{space_id}/bank/")
             files = [
                 {
@@ -233,12 +242,21 @@ def register(mcp: FastMCP) -> int:
             }
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "bank")
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=False))
     async def bank_consolidate(
-        space_id: Annotated[str, Field(description="Identifiant de l'espace à consolider")],
-        agent: Annotated[str, Field(default="", description="Nom de l'agent dont consolider les notes (vide = toutes, admin requis)")] = "",
+        space_id: Annotated[
+            str, Field(description="Identifiant de l'espace à consolider")
+        ],
+        agent: Annotated[
+            str,
+            Field(
+                default="",
+                description="Nom de l'agent dont consolider les notes (vide = toutes, admin requis)",
+            ),
+        ] = "",
     ) -> dict:
         """
         Déclenche la consolidation : le LLM lit les notes live et produit
@@ -266,8 +284,10 @@ def register(mcp: FastMCP) -> int:
             Métriques de consolidation (notes traitées, fichiers MAJ, tokens)
         """
         from ..auth.context import (
-            check_access, check_write_permission,
-            check_admin_permission, get_current_agent_name,
+            check_access,
+            check_write_permission,
+            check_admin_permission,
+            get_current_agent_name,
         )
         from ..core.locks import get_lock_manager
         from ..core.consolidator import get_consolidator
@@ -339,12 +359,21 @@ def register(mcp: FastMCP) -> int:
 
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "bank")
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=True))
     async def bank_repair(
-        space_id: Annotated[str, Field(description="Identifiant de l'espace à réparer")],
-        dry_run: Annotated[bool, Field(default=True, description="True = scan seul (liste les fichiers à réparer), False = applique les corrections")] = True,
+        space_id: Annotated[
+            str, Field(description="Identifiant de l'espace à réparer")
+        ],
+        dry_run: Annotated[
+            bool,
+            Field(
+                default=True,
+                description="True = scan seul (liste les fichiers à réparer), False = applique les corrections",
+            ),
+        ] = True,
     ) -> dict:
         """
         Répare les fichiers bank : caractères Unicode invisibles,
@@ -411,12 +440,14 @@ def register(mcp: FastMCP) -> int:
 
                 if sanitized not in groups:
                     groups[sanitized] = []
-                groups[sanitized].append({
-                    "key": key,
-                    "relpath": relpath,
-                    "size": obj["Size"],
-                    "last_modified": str(obj.get("LastModified", "")),
-                })
+                groups[sanitized].append(
+                    {
+                        "key": key,
+                        "relpath": relpath,
+                        "size": obj["Size"],
+                        "last_modified": str(obj.get("LastModified", "")),
+                    }
+                )
 
             # Phase 2 : Identifier les réparations et doublons
             repairs = []
@@ -439,24 +470,28 @@ def register(mcp: FastMCP) -> int:
 
                 if best["key"] != canonical_key:
                     # Le fichier principal n'est pas au bon chemin → réparer
-                    repairs.append({
-                        "original_relpath": best["relpath"],
-                        "sanitized": sanitized,
-                        "original_key": best["key"],
-                        "canonical_key": canonical_key,
-                        "size": best["size"],
-                        "action": "move",
-                    })
+                    repairs.append(
+                        {
+                            "original_relpath": best["relpath"],
+                            "sanitized": sanitized,
+                            "original_key": best["key"],
+                            "canonical_key": canonical_key,
+                            "size": best["size"],
+                            "action": "move",
+                        }
+                    )
 
                 # Les autres entrées sont des doublons à supprimer
                 for dup in entries[1:] if len(entries) > 1 else []:
-                    duplicates.append({
-                        "relpath": dup["relpath"],
-                        "key": dup["key"],
-                        "size": dup["size"],
-                        "canonical": sanitized,
-                        "action": "delete_duplicate",
-                    })
+                    duplicates.append(
+                        {
+                            "relpath": dup["relpath"],
+                            "key": dup["key"],
+                            "size": dup["size"],
+                            "canonical": sanitized,
+                            "action": "delete_duplicate",
+                        }
+                    )
 
             # Phase 3 : Appliquer si dry_run=False
             if not dry_run:
@@ -481,7 +516,6 @@ def register(mcp: FastMCP) -> int:
 
             mode = "dry-run" if dry_run else "applied"
             total_issues = len(repairs) + len(duplicates)
-            total_scanned = files_ok + len(groups) - files_ok  # = len(groups)
 
             return {
                 "status": "ok",
@@ -497,20 +531,33 @@ def register(mcp: FastMCP) -> int:
                     f"{len(repairs)} fichier(s) à déplacer, "
                     f"{len(duplicates)} doublon(s) à supprimer "
                     f"sur {len(groups)} fichiers uniques. "
-                    + ("Passez dry_run=False pour appliquer." if dry_run and total_issues > 0 else "")
-                    + ("Corrections appliquées." if not dry_run and total_issues > 0 else "")
+                    + (
+                        "Passez dry_run=False pour appliquer."
+                        if dry_run and total_issues > 0
+                        else ""
+                    )
+                    + (
+                        "Corrections appliquées."
+                        if not dry_run and total_issues > 0
+                        else ""
+                    )
                     + ("Tous les fichiers sont OK." if total_issues == 0 else "")
                 ),
             }
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "bank")
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=True))
     async def bank_write(
         space_id: Annotated[str, Field(description="Identifiant de l'espace")],
-        filename: Annotated[str, Field(description="Nom du fichier bank (ex: 'activeContext.md')")],
-        content: Annotated[str, Field(description="Contenu Markdown complet du fichier")],
+        filename: Annotated[
+            str, Field(description="Nom du fichier bank (ex: 'activeContext.md')")
+        ],
+        content: Annotated[
+            str, Field(description="Contenu Markdown complet du fichier")
+        ],
     ) -> dict:
         """
         Écrit ou remplace un fichier dans la Memory Bank (admin).
@@ -592,6 +639,7 @@ def register(mcp: FastMCP) -> int:
 
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "bank")
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True, idempotentHint=True))
@@ -670,12 +718,21 @@ def register(mcp: FastMCP) -> int:
 
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "bank")
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=True))
     async def bank_compact(
-        space_id: Annotated[str, Field(description="Identifiant de l'espace à compacter")],
-        dry_run: Annotated[bool, Field(default=True, description="True = scan seul (rapport sans modification), False = compaction effective via LLM")] = True,
+        space_id: Annotated[
+            str, Field(description="Identifiant de l'espace à compacter")
+        ],
+        dry_run: Annotated[
+            bool,
+            Field(
+                default=True,
+                description="True = scan seul (rapport sans modification), False = compaction effective via LLM",
+            ),
+        ] = True,
     ) -> dict:
         """
         Compacte les fichiers bank surdimensionnés via LLM (admin).
@@ -729,13 +786,16 @@ def register(mcp: FastMCP) -> int:
                         ),
                     }
                 async with lock:
-                    return await get_consolidator().compact_bank(space_id, dry_run=False)
+                    return await get_consolidator().compact_bank(
+                        space_id, dry_run=False
+                    )
             else:
                 # Dry-run : pas besoin de lock (lecture seule)
                 return await get_consolidator().compact_bank(space_id, dry_run=True)
 
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "bank")
 
     return 8  # Nombre d'outils enregistrés

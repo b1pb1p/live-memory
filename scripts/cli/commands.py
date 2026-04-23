@@ -17,13 +17,30 @@ import click
 from . import BASE_URL, TOKEN
 from .client import MCPClient
 from .display import (
-    console, show_error, show_success, show_warning, show_json,
-    show_health_result, show_whoami_result, show_about_result,
-    show_space_created, show_space_list, show_space_info, show_rules, show_notes,
-    show_bank_list, show_bank_content, show_consolidation_result,
-    show_graph_connected, show_graph_status, show_graph_push_result, show_graph_disconnected,
-    show_token_created, show_token_list,
-    show_backup_created, show_backup_list,
+    console,
+    show_error,
+    show_success,
+    show_warning,
+    show_json,
+    show_health_result,
+    show_whoami_result,
+    show_about_result,
+    show_space_created,
+    show_space_list,
+    show_space_info,
+    show_rules,
+    show_notes,
+    show_bank_list,
+    show_bank_content,
+    show_consolidation_result,
+    show_graph_connected,
+    show_graph_status,
+    show_graph_push_result,
+    show_graph_disconnected,
+    show_token_created,
+    show_token_list,
+    show_backup_created,
+    show_backup_list,
 )
 
 
@@ -31,20 +48,32 @@ from .display import (
 # Helper pour exécuter les commandes async
 # ─────────────────────────────────────────────────────────────
 
+
 def _run_tool(ctx, tool_name, args, on_success, json_flag=False):
     """Helper commun : appelle un outil MCP et affiche le résultat."""
+
     async def _run():
         try:
             client = MCPClient(ctx.obj["url"], ctx.obj["token"])
             result = await client.call_tool(tool_name, args)
             if json_flag:
                 show_json(result)
-            elif result.get("status") in ("ok", "healthy", "created", "deleted", "connected", "disconnected"):
+            elif result.get("status") in (
+                "ok",
+                "healthy",
+                "created",
+                "deleted",
+                "connected",
+                "disconnected",
+            ):
                 on_success(result)
             else:
-                show_error(result.get("message", f"Erreur: {result.get('status', '?')}"))
+                show_error(
+                    result.get("message", f"Erreur: {result.get('status', '?')}")
+                )
         except Exception as e:
             show_error(f"Connexion impossible: {e}")
+
     asyncio.run(_run())
 
 
@@ -52,9 +81,18 @@ def _run_tool(ctx, tool_name, args, on_success, json_flag=False):
 # Groupe racine
 # ─────────────────────────────────────────────────────────────
 
+
 @click.group()
-@click.option("--url", "-u", envvar=["MCP_URL"], default=BASE_URL, help="URL du serveur MCP")
-@click.option("--token", "-t", envvar=["MCP_TOKEN"], default=TOKEN, help="Token d'authentification")
+@click.option(
+    "--url", "-u", envvar=["MCP_URL"], default=BASE_URL, help="URL du serveur MCP"
+)
+@click.option(
+    "--token",
+    "-t",
+    envvar=["MCP_TOKEN"],
+    default=TOKEN,
+    help="Token d'authentification",
+)
 @click.pass_context
 def cli(ctx, url, token):
     """🧠 Live Memory — CLI pour le serveur MCP."""
@@ -67,12 +105,14 @@ def cli(ctx, url, token):
 # System
 # ─────────────────────────────────────────────────────────────
 
+
 @cli.command("health")
 @click.option("--json", "-j", "jflag", is_flag=True, help="JSON brut")
 @click.pass_context
 def health_cmd(ctx, jflag):
     """❤️  État de santé du service."""
     import httpx
+
     try:
         url = ctx.obj["url"].rstrip("/") + "/health"
         resp = httpx.get(url, timeout=10)
@@ -105,6 +145,7 @@ def about_cmd(ctx, jflag):
 # Space (sous-groupe)
 # ─────────────────────────────────────────────────────────────
 
+
 @cli.group("space")
 def space_grp():
     """📂 Gestion des espaces mémoire."""
@@ -114,7 +155,9 @@ def space_grp():
 @space_grp.command("create")
 @click.argument("space_id")
 @click.option("--description", "-d", default="", help="Description de l'espace")
-@click.option("--rules-file", "-r", type=click.Path(exists=True), help="Fichier rules (.md)")
+@click.option(
+    "--rules-file", "-r", type=click.Path(exists=True), help="Fichier rules (.md)"
+)
 @click.option("--rules", default="", help="Contenu rules en ligne")
 @click.option("--owner", "-o", default="", help="Propriétaire")
 @click.option("--json", "-j", "jflag", is_flag=True)
@@ -126,15 +169,31 @@ def space_create_cmd(ctx, space_id, description, rules_file, rules, owner, jflag
     if not rules:
         show_error("Rules requises (--rules-file ou --rules)")
         return
-    _run_tool(ctx, "space_create", {
-        "space_id": space_id, "description": description, "rules": rules, "owner": owner,
-    }, show_space_created, jflag)
+    _run_tool(
+        ctx,
+        "space_create",
+        {
+            "space_id": space_id,
+            "description": description,
+            "rules": rules,
+            "owner": owner,
+        },
+        show_space_created,
+        jflag,
+    )
 
 
 @space_grp.command("update")
 @click.argument("space_id")
-@click.option("--description", "-d", default="", help="Nouvelle description (vide = pas de changement)")
-@click.option("--owner", "-o", default="", help="Nouveau propriétaire (vide = pas de changement)")
+@click.option(
+    "--description",
+    "-d",
+    default="",
+    help="Nouvelle description (vide = pas de changement)",
+)
+@click.option(
+    "--owner", "-o", default="", help="Nouveau propriétaire (vide = pas de changement)"
+)
 @click.option("--json", "-j", "jflag", is_flag=True)
 @click.pass_context
 def space_update_cmd(ctx, space_id, description, owner, jflag):
@@ -156,12 +215,19 @@ def space_update_cmd(ctx, space_id, description, owner, jflag):
         show_error("Rien à modifier. Utilisez --description/-d et/ou --owner/-o.")
         return
     from .display import show_space_updated
+
     _run_tool(ctx, "space_update", args, show_space_updated, jflag)
 
 
 @space_grp.command("update-rules")
 @click.argument("space_id")
-@click.option("--rules-file", "-f", required=True, type=click.Path(exists=True), help="Fichier Markdown des rules")
+@click.option(
+    "--rules-file",
+    "-f",
+    required=True,
+    type=click.Path(exists=True),
+    help="Fichier Markdown des rules",
+)
 @click.option("--json", "-j", "jflag", is_flag=True)
 @click.pass_context
 def space_update_rules_cmd(ctx, space_id, rules_file, jflag):
@@ -176,7 +242,14 @@ def space_update_rules_cmd(ctx, space_id, rules_file, jflag):
         show_error("Le fichier de rules est vide.")
         return
     from .display import show_rules_updated
-    _run_tool(ctx, "space_update_rules", {"space_id": space_id, "rules": content}, show_rules_updated, jflag)
+
+    _run_tool(
+        ctx,
+        "space_update_rules",
+        {"space_id": space_id, "rules": content},
+        show_rules_updated,
+        jflag,
+    )
 
 
 @space_grp.command("list")
@@ -228,14 +301,23 @@ def space_export_cmd(ctx, space_id):
 @click.pass_context
 def space_delete_cmd(ctx, space_id, confirm):
     """⚠️ Supprimer un espace (irréversible)."""
-    _run_tool(ctx, "space_delete", {
-        "space_id": space_id, "confirm": confirm,
-    }, lambda r: show_success(f"Espace '{space_id}' supprimé ({r.get('files_deleted', 0)} fichiers)"))
+    _run_tool(
+        ctx,
+        "space_delete",
+        {
+            "space_id": space_id,
+            "confirm": confirm,
+        },
+        lambda r: show_success(
+            f"Espace '{space_id}' supprimé ({r.get('files_deleted', 0)} fichiers)"
+        ),
+    )
 
 
 # ─────────────────────────────────────────────────────────────
 # Live (sous-groupe)
 # ─────────────────────────────────────────────────────────────
+
 
 @cli.group("live")
 def live_grp():
@@ -252,10 +334,18 @@ def live_grp():
 @click.pass_context
 def live_note_cmd(ctx, space_id, category, content, tags, jflag):
     """Écrire une note (agent = token name, toujours)."""
-    _run_tool(ctx, "live_note", {
-        "space_id": space_id, "category": category, "content": content,
-        "tags": tags,
-    }, lambda r: show_success(f"Note créée: {r.get('filename', '?')}"), jflag)
+    _run_tool(
+        ctx,
+        "live_note",
+        {
+            "space_id": space_id,
+            "category": category,
+            "content": content,
+            "tags": tags,
+        },
+        lambda r: show_success(f"Note créée: {r.get('filename', '?')}"),
+        jflag,
+    )
 
 
 @live_grp.command("read")
@@ -268,10 +358,19 @@ def live_note_cmd(ctx, space_id, category, content, tags, jflag):
 @click.pass_context
 def live_read_cmd(ctx, space_id, limit, category, agent, since, jflag):
     """Lire les notes live."""
-    _run_tool(ctx, "live_read", {
-        "space_id": space_id, "limit": limit, "category": category,
-        "agent": agent, "since": since,
-    }, show_notes, jflag)
+    _run_tool(
+        ctx,
+        "live_read",
+        {
+            "space_id": space_id,
+            "limit": limit,
+            "category": category,
+            "agent": agent,
+            "since": since,
+        },
+        show_notes,
+        jflag,
+    )
 
 
 @live_grp.command("search")
@@ -282,14 +381,23 @@ def live_read_cmd(ctx, space_id, limit, category, agent, since, jflag):
 @click.pass_context
 def live_search_cmd(ctx, space_id, query, limit, jflag):
     """Rechercher dans les notes."""
-    _run_tool(ctx, "live_search", {
-        "space_id": space_id, "query": query, "limit": limit,
-    }, show_notes, jflag)
+    _run_tool(
+        ctx,
+        "live_search",
+        {
+            "space_id": space_id,
+            "query": query,
+            "limit": limit,
+        },
+        show_notes,
+        jflag,
+    )
 
 
 # ─────────────────────────────────────────────────────────────
 # Bank (sous-groupe)
 # ─────────────────────────────────────────────────────────────
+
 
 @cli.group("bank")
 def bank_grp():
@@ -304,7 +412,13 @@ def bank_grp():
 @click.pass_context
 def bank_read_cmd(ctx, space_id, filename, jflag):
     """Lire un fichier bank."""
-    _run_tool(ctx, "bank_read", {"space_id": space_id, "filename": filename}, show_bank_content, jflag)
+    _run_tool(
+        ctx,
+        "bank_read",
+        {"space_id": space_id, "filename": filename},
+        show_bank_content,
+        jflag,
+    )
 
 
 @bank_grp.command("read-all")
@@ -313,9 +427,11 @@ def bank_read_cmd(ctx, space_id, filename, jflag):
 @click.pass_context
 def bank_read_all_cmd(ctx, space_id, jflag):
     """Lire toute la bank."""
+
     def _show(r):
         for f in r.get("files", []):
             show_bank_content(f)
+
     _run_tool(ctx, "bank_read_all", {"space_id": space_id}, _show, jflag)
 
 
@@ -334,13 +450,21 @@ def bank_list_cmd(ctx, space_id, jflag):
 @click.pass_context
 def bank_consolidate_cmd(ctx, space_id, jflag):
     """🧠 Consolider les notes via LLM."""
-    _run_tool(ctx, "bank_consolidate", {"space_id": space_id}, show_consolidation_result, jflag)
+    _run_tool(
+        ctx,
+        "bank_consolidate",
+        {"space_id": space_id},
+        show_consolidation_result,
+        jflag,
+    )
 
 
 @bank_grp.command("write")
 @click.argument("space_id")
 @click.argument("filename")
-@click.option("--content-file", "-f", type=click.Path(exists=True), help="Fichier source (.md)")
+@click.option(
+    "--content-file", "-f", type=click.Path(exists=True), help="Fichier source (.md)"
+)
 @click.option("--content", "-c", default="", help="Contenu en ligne")
 @click.option("--json", "-j", "jflag", is_flag=True)
 @click.pass_context
@@ -358,9 +482,18 @@ def bank_write_cmd(ctx, space_id, filename, content_file, content, jflag):
         show_error("Contenu requis : --content-file/-f ou --content/-c")
         return
     from .display import show_bank_write_result
-    _run_tool(ctx, "bank_write", {
-        "space_id": space_id, "filename": filename, "content": content,
-    }, show_bank_write_result, jflag)
+
+    _run_tool(
+        ctx,
+        "bank_write",
+        {
+            "space_id": space_id,
+            "filename": filename,
+            "content": content,
+        },
+        show_bank_write_result,
+        jflag,
+    )
 
 
 @bank_grp.command("delete")
@@ -371,9 +504,17 @@ def bank_write_cmd(ctx, space_id, filename, content_file, content, jflag):
 def bank_delete_cmd(ctx, space_id, filename, jflag):
     """🗑️ Supprimer un fichier bank + doublons (admin, irréversible)."""
     from .display import show_bank_delete_result
-    _run_tool(ctx, "bank_delete", {
-        "space_id": space_id, "filename": filename,
-    }, show_bank_delete_result, jflag)
+
+    _run_tool(
+        ctx,
+        "bank_delete",
+        {
+            "space_id": space_id,
+            "filename": filename,
+        },
+        show_bank_delete_result,
+        jflag,
+    )
 
 
 @bank_grp.command("repair")
@@ -390,9 +531,17 @@ def bank_repair_cmd(ctx, space_id, apply, jflag):
       bank repair mon-projet --apply      # Appliquer les corrections
     """
     from .display import show_bank_repair_result
-    _run_tool(ctx, "bank_repair", {
-        "space_id": space_id, "dry_run": not apply,
-    }, show_bank_repair_result, jflag)
+
+    _run_tool(
+        ctx,
+        "bank_repair",
+        {
+            "space_id": space_id,
+            "dry_run": not apply,
+        },
+        show_bank_repair_result,
+        jflag,
+    )
 
 
 @bank_grp.command("compact")
@@ -416,16 +565,27 @@ def bank_compact_cmd(ctx, space_id, apply, jflag):
     if not apply:
         console.print("[dim]Mode dry-run — analyse sans modification.[/dim]")
     else:
-        console.print("[dim]Compaction en cours... (peut prendre plusieurs secondes par fichier)[/dim]")
+        console.print(
+            "[dim]Compaction en cours... (peut prendre plusieurs secondes par fichier)[/dim]"
+        )
     from .display import show_bank_compact_result
-    _run_tool(ctx, "bank_compact", {
-        "space_id": space_id, "dry_run": not apply,
-    }, show_bank_compact_result, jflag)
+
+    _run_tool(
+        ctx,
+        "bank_compact",
+        {
+            "space_id": space_id,
+            "dry_run": not apply,
+        },
+        show_bank_compact_result,
+        jflag,
+    )
 
 
 # ─────────────────────────────────────────────────────────────
 # Token (sous-groupe)
 # ─────────────────────────────────────────────────────────────
+
 
 @cli.group("token")
 def token_grp():
@@ -442,8 +602,13 @@ VALID_PERMISSIONS = click.Choice(
 
 @token_grp.command("create")
 @click.argument("name")
-@click.option("--permissions", "-p", type=VALID_PERMISSIONS, required=True,
-              help="Permissions : read | read,write | read,write,admin")
+@click.option(
+    "--permissions",
+    "-p",
+    type=VALID_PERMISSIONS,
+    required=True,
+    help="Permissions : read | read,write | read,write,admin",
+)
 @click.option("--space-ids", default="", help="Espaces autorisés (virgules)")
 @click.option("--expires-in-days", default=0, help="Expiration (0=jamais)")
 @click.option("--email", "-e", default="", help="Email du propriétaire")
@@ -464,19 +629,36 @@ def token_create_cmd(ctx, name, permissions, space_ids, expires_in_days, email, 
       read,write       — Lecture + écriture (notes, consolidation, espaces)
       read,write,admin — Accès complet (tokens, suppression, GC)
     """
-    _run_tool(ctx, "admin_create_token", {
-        "name": name, "permissions": permissions,
-        "space_ids": space_ids, "expires_in_days": expires_in_days,
-        "email": email,
-    }, show_token_created, jflag)
+    _run_tool(
+        ctx,
+        "admin_create_token",
+        {
+            "name": name,
+            "permissions": permissions,
+            "space_ids": space_ids,
+            "expires_in_days": expires_in_days,
+            "email": email,
+        },
+        show_token_created,
+        jflag,
+    )
 
 
 @token_grp.command("update")
 @click.argument("token_hash")
-@click.option("--permissions", "-p", type=VALID_PERMISSIONS, default="",
-              help="Nouvelles permissions (read | read,write | read,write,admin)")
-@click.option("--space-ids", "-s", default="",
-              help="Nouveaux espaces autorisés (virgules, vide=tous)")
+@click.option(
+    "--permissions",
+    "-p",
+    type=VALID_PERMISSIONS,
+    default="",
+    help="Nouvelles permissions (read | read,write | read,write,admin)",
+)
+@click.option(
+    "--space-ids",
+    "-s",
+    default="",
+    help="Nouveaux espaces autorisés (virgules, vide=tous)",
+)
 @click.option("--email", "-e", default="", help="Email du propriétaire")
 @click.option("--json", "-j", "jflag", is_flag=True)
 @click.pass_context
@@ -490,7 +672,9 @@ def token_update_cmd(ctx, token_hash, permissions, space_ids, email, jflag):
       token update sha256:a8c5 -s "mon-projet" -e user@example.com
     """
     if not permissions and not space_ids and not email:
-        show_error("Rien à mettre à jour. Utilisez --permissions, --space-ids et/ou --email.")
+        show_error(
+            "Rien à mettre à jour. Utilisez --permissions, --space-ids et/ou --email."
+        )
         return
     args = {"token_hash": token_hash}
     if permissions:
@@ -499,8 +683,13 @@ def token_update_cmd(ctx, token_hash, permissions, space_ids, email, jflag):
         args["space_ids"] = space_ids
     if email:
         args["email"] = email
-    _run_tool(ctx, "admin_update_token", args,
-              lambda r: show_success(f"Token mis à jour : {r.get('message', 'OK')}"), jflag)
+    _run_tool(
+        ctx,
+        "admin_update_token",
+        args,
+        lambda r: show_success(f"Token mis à jour : {r.get('message', 'OK')}"),
+        jflag,
+    )
 
 
 @token_grp.command("list")
@@ -516,8 +705,12 @@ def token_list_cmd(ctx, jflag):
 @click.pass_context
 def token_revoke_cmd(ctx, token_hash):
     """Révoquer un token."""
-    _run_tool(ctx, "admin_revoke_token", {"token_hash": token_hash},
-              lambda r: show_success(r.get("message", "Token révoqué")))
+    _run_tool(
+        ctx,
+        "admin_revoke_token",
+        {"token_hash": token_hash},
+        lambda r: show_success(r.get("message", "Token révoqué")),
+    )
 
 
 @token_grp.command("delete")
@@ -525,12 +718,21 @@ def token_revoke_cmd(ctx, token_hash):
 @click.pass_context
 def token_delete_cmd(ctx, token_hash):
     """🗑️ Supprimer physiquement un token (irréversible)."""
-    _run_tool(ctx, "admin_delete_token", {"token_hash": token_hash},
-              lambda r: show_success(r.get("message", "Token supprimé")))
+    _run_tool(
+        ctx,
+        "admin_delete_token",
+        {"token_hash": token_hash},
+        lambda r: show_success(r.get("message", "Token supprimé")),
+    )
 
 
 @token_grp.command("purge")
-@click.option("--all", "purge_all", is_flag=True, help="Supprimer TOUS les tokens (pas seulement les révoqués)")
+@click.option(
+    "--all",
+    "purge_all",
+    is_flag=True,
+    help="Supprimer TOUS les tokens (pas seulement les révoqués)",
+)
 @click.option("--confirm", is_flag=True, help="Confirmer la purge (requis)")
 @click.option("--json", "-j", "jflag", is_flag=True)
 @click.pass_context
@@ -542,14 +744,21 @@ def token_purge_cmd(ctx, purge_all, confirm, jflag):
         show_warning(f"   token purge {'--all ' if purge_all else ''}--confirm")
         return
     revoked_only = not purge_all
-    _run_tool(ctx, "admin_purge_tokens", {"revoked_only": revoked_only},
-              lambda r: show_success(f"{r.get('deleted', 0)} token(s) supprimé(s), {r.get('remaining', 0)} restant(s)"),
-              jflag)
+    _run_tool(
+        ctx,
+        "admin_purge_tokens",
+        {"revoked_only": revoked_only},
+        lambda r: show_success(
+            f"{r.get('deleted', 0)} token(s) supprimé(s), {r.get('remaining', 0)} restant(s)"
+        ),
+        jflag,
+    )
 
 
 # ─────────────────────────────────────────────────────────────
 # Backup (sous-groupe)
 # ─────────────────────────────────────────────────────────────
+
 
 @cli.group("backup")
 def backup_grp():
@@ -559,7 +768,9 @@ def backup_grp():
 
 @backup_grp.command("create")
 @click.argument("space_id", default="")
-@click.option("--all", "backup_all", is_flag=True, help="Backup TOUS les espaces (admin requis)")
+@click.option(
+    "--all", "backup_all", is_flag=True, help="Backup TOUS les espaces (admin requis)"
+)
 @click.option("--description", "-d", default="")
 @click.option("--json", "-j", "jflag", is_flag=True)
 @click.pass_context
@@ -579,10 +790,18 @@ def backup_create_cmd(ctx, space_id, backup_all, description, jflag):
         show_error("Space ID requis, ou utilisez --all pour tous les espaces.")
         return
     from .display import show_backup_all_result
+
     on_success = show_backup_all_result if not space_id else show_backup_created
-    _run_tool(ctx, "backup_create", {
-        "space_id": space_id, "description": description,
-    }, on_success, jflag)
+    _run_tool(
+        ctx,
+        "backup_create",
+        {
+            "space_id": space_id,
+            "description": description,
+        },
+        on_success,
+        jflag,
+    )
 
 
 @backup_grp.command("list")
@@ -600,8 +819,12 @@ def backup_list_cmd(ctx, space_id, jflag):
 @click.pass_context
 def backup_restore_cmd(ctx, backup_id, confirm):
     """Restaurer depuis un backup."""
-    _run_tool(ctx, "backup_restore", {"backup_id": backup_id, "confirm": confirm},
-              lambda r: show_success(f"Restauré: {r.get('files_restored', 0)} fichiers"))
+    _run_tool(
+        ctx,
+        "backup_restore",
+        {"backup_id": backup_id, "confirm": confirm},
+        lambda r: show_success(f"Restauré: {r.get('files_restored', 0)} fichiers"),
+    )
 
 
 @backup_grp.command("download")
@@ -618,13 +841,18 @@ def backup_download_cmd(ctx, backup_id):
 @click.pass_context
 def backup_delete_cmd(ctx, backup_id, confirm):
     """Supprimer un backup."""
-    _run_tool(ctx, "backup_delete", {"backup_id": backup_id, "confirm": confirm},
-              lambda r: show_success(f"Supprimé: {r.get('files_deleted', 0)} fichiers"))
+    _run_tool(
+        ctx,
+        "backup_delete",
+        {"backup_id": backup_id, "confirm": confirm},
+        lambda r: show_success(f"Supprimé: {r.get('files_deleted', 0)} fichiers"),
+    )
 
 
 # ─────────────────────────────────────────────────────────────
 # Graph Bridge (sous-groupe)
 # ─────────────────────────────────────────────────────────────
+
 
 @cli.group("graph")
 def graph_grp():
@@ -637,16 +865,29 @@ def graph_grp():
 @click.argument("url")
 @click.argument("graph_token")
 @click.argument("memory_id")
-@click.option("--ontology", "-o", default="general",
-              help="Ontologie Graph Memory (general, legal, cloud, managed-services, presales)")
+@click.option(
+    "--ontology",
+    "-o",
+    default="general",
+    help="Ontologie Graph Memory (general, legal, cloud, managed-services, presales)",
+)
 @click.option("--json", "-j", "jflag", is_flag=True)
 @click.pass_context
 def graph_connect_cmd(ctx, space_id, url, graph_token, memory_id, ontology, jflag):
     """Connecter un space à Graph Memory."""
-    _run_tool(ctx, "graph_connect", {
-        "space_id": space_id, "url": url, "token": graph_token,
-        "memory_id": memory_id, "ontology": ontology,
-    }, show_graph_connected, jflag)
+    _run_tool(
+        ctx,
+        "graph_connect",
+        {
+            "space_id": space_id,
+            "url": url,
+            "token": graph_token,
+            "memory_id": memory_id,
+            "ontology": ontology,
+        },
+        show_graph_connected,
+        jflag,
+    )
 
 
 @graph_grp.command("push")
@@ -674,12 +915,15 @@ def graph_status_cmd(ctx, space_id, jflag):
 @click.pass_context
 def graph_disconnect_cmd(ctx, space_id, jflag):
     """🔌 Déconnecter un space de Graph Memory."""
-    _run_tool(ctx, "graph_disconnect", {"space_id": space_id}, show_graph_disconnected, jflag)
+    _run_tool(
+        ctx, "graph_disconnect", {"space_id": space_id}, show_graph_disconnected, jflag
+    )
 
 
 # ─────────────────────────────────────────────────────────────
 # GC (Garbage Collector)
 # ─────────────────────────────────────────────────────────────
+
 
 @cli.command("gc")
 @click.option("--space-id", default="", help="Espace cible (vide = tous)")
@@ -690,19 +934,29 @@ def graph_disconnect_cmd(ctx, space_id, jflag):
 @click.pass_context
 def gc_cmd(ctx, space_id, max_age_days, confirm, delete_only, jflag):
     """🧹 Garbage Collector : nettoyer les notes orphelines."""
-    _run_tool(ctx, "admin_gc_notes", {
-        "space_id": space_id, "max_age_days": max_age_days,
-        "confirm": confirm, "delete_only": delete_only,
-    }, show_json, jflag)
+    _run_tool(
+        ctx,
+        "admin_gc_notes",
+        {
+            "space_id": space_id,
+            "max_age_days": max_age_days,
+            "confirm": confirm,
+            "delete_only": delete_only,
+        },
+        show_json,
+        jflag,
+    )
 
 
 # ─────────────────────────────────────────────────────────────
 # Shell
 # ─────────────────────────────────────────────────────────────
 
+
 @cli.command("shell")
 @click.pass_context
 def shell_cmd(ctx):
     """🐚 Lancer le shell interactif."""
     from .shell import run_shell
+
     asyncio.run(run_shell(ctx.obj["url"], ctx.obj["token"]))

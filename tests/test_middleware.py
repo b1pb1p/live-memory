@@ -7,7 +7,6 @@ Tests: RequestIdMiddleware, MetricsMiddleware, ResponseLimitMiddleware,
 """
 
 import json
-import asyncio
 import pytest
 
 from live_mem.middleware import (
@@ -22,6 +21,7 @@ from live_mem.middleware import (
 # ─────────────────────────────────────────────────────────────
 # Helpers — minimal ASGI test harness
 # ─────────────────────────────────────────────────────────────
+
 
 def _make_scope(path="/test", method="GET", headers=None):
     """Create a minimal ASGI HTTP scope."""
@@ -41,27 +41,35 @@ async def _dummy_receive():
 
 def _echo_app(status=200, body=b'{"ok":true}', content_type=b"application/json"):
     """ASGI app that returns a fixed response."""
+
     async def app(scope, receive, send):
-        await send({
-            "type": "http.response.start",
-            "status": status,
-            "headers": [
-                (b"content-type", content_type),
-                (b"content-length", str(len(body)).encode()),
-            ],
-        })
-        await send({
-            "type": "http.response.body",
-            "body": body,
-        })
+        await send(
+            {
+                "type": "http.response.start",
+                "status": status,
+                "headers": [
+                    (b"content-type", content_type),
+                    (b"content-length", str(len(body)).encode()),
+                ],
+            }
+        )
+        await send(
+            {
+                "type": "http.response.body",
+                "body": body,
+            }
+        )
+
     return app
 
 
 async def _collect_response(app, scope):
     """Run an ASGI app and collect the response parts."""
     messages = []
+
     async def send(msg):
         messages.append(msg)
+
     await app(scope, _dummy_receive, send)
     return messages
 
@@ -70,8 +78,8 @@ async def _collect_response(app, scope):
 # RequestIdMiddleware
 # =============================================================================
 
-class TestRequestIdMiddleware:
 
+class TestRequestIdMiddleware:
     @pytest.mark.asyncio
     async def test_adds_request_id_header(self):
         app = RequestIdMiddleware(_echo_app())
@@ -117,9 +125,11 @@ class TestRequestIdMiddleware:
     @pytest.mark.asyncio
     async def test_passthrough_non_http(self):
         called = False
+
         async def inner(scope, receive, send):
             nonlocal called
             called = True
+
         app = RequestIdMiddleware(inner)
         await app({"type": "websocket"}, _dummy_receive, lambda m: None)
         assert called
@@ -129,8 +139,8 @@ class TestRequestIdMiddleware:
 # MetricsMiddleware
 # =============================================================================
 
-class TestMetricsMiddleware:
 
+class TestMetricsMiddleware:
     @pytest.mark.asyncio
     async def test_counts_requests(self):
         app = MetricsMiddleware(_echo_app())
@@ -205,8 +215,8 @@ class TestMetricsMiddleware:
 # ResponseLimitMiddleware
 # =============================================================================
 
-class TestResponseLimitMiddleware:
 
+class TestResponseLimitMiddleware:
     @pytest.mark.asyncio
     async def test_small_response_passes_through(self):
         body = b'{"status": "ok"}'
@@ -267,13 +277,27 @@ class TestResponseLimitMiddleware:
         headers = dict(msgs[0]["headers"])
         assert b"x-response-truncated" not in headers
 
+    @pytest.mark.asyncio
+    async def test_excluded_path_bypasses_limit(self):
+        """MCP responses (/mcp) should not be truncated."""
+        body = b"x" * 2000
+        app = ResponseLimitMiddleware(
+            _echo_app(body=body, content_type=b"application/octet-stream"),
+            max_bytes=1024,
+            exclude_paths=("/mcp",),
+        )
+        msgs = await _collect_response(app, _make_scope("/mcp"))
+
+        resp_body = msgs[1]["body"]
+        assert len(resp_body) == 2000
+
 
 # =============================================================================
 # AuditMiddleware
 # =============================================================================
 
-class TestAuditMiddleware:
 
+class TestAuditMiddleware:
     @pytest.mark.asyncio
     async def test_skips_health_path(self):
         logged = []
@@ -281,6 +305,7 @@ class TestAuditMiddleware:
 
         # Monkey-patch audit logger
         import live_mem.middleware as mw
+
         orig = mw.audit_logger.info
         mw.audit_logger.info = lambda msg: logged.append(msg)
         try:
@@ -296,6 +321,7 @@ class TestAuditMiddleware:
         app = AuditMiddleware(_echo_app())
 
         import live_mem.middleware as mw
+
         orig = mw.audit_logger.info
         mw.audit_logger.info = lambda msg: logged.append(msg)
         try:
@@ -316,6 +342,7 @@ class TestAuditMiddleware:
         app = AuditMiddleware(_echo_app())
 
         import live_mem.middleware as mw
+
         orig = mw.audit_logger.info
         mw.audit_logger.info = lambda msg: logged.append(msg)
         try:

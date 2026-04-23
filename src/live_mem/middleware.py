@@ -17,7 +17,6 @@ import uuid
 import logging
 from collections import defaultdict
 from contextvars import ContextVar
-from typing import Optional
 
 from .auth.context import current_token_info
 
@@ -33,6 +32,7 @@ audit_logger = logging.getLogger("live_mem.audit")
 # =============================================================================
 # RequestIdMiddleware
 # =============================================================================
+
 
 class RequestIdMiddleware:
     """
@@ -69,6 +69,7 @@ class RequestIdMiddleware:
 # =============================================================================
 # MetricsMiddleware
 # =============================================================================
+
 
 class MetricsMiddleware:
     """
@@ -143,7 +144,9 @@ class MetricsMiddleware:
                         "latency_ms_total": round(self._latency_ms[path], 1),
                         "latency_ms_avg": round(
                             self._latency_ms[path] / self._request_count[path], 1
-                        ) if self._request_count[path] else 0,
+                        )
+                        if self._request_count[path]
+                        else 0,
                     }
                     for path in sorted(self._request_count)
                 },
@@ -192,20 +195,23 @@ class MetricsMiddleware:
             body = "\n".join(lines).encode()
             ct = b"text/plain; version=0.0.4; charset=utf-8"
 
-        await send({
-            "type": "http.response.start",
-            "status": 200,
-            "headers": [
-                (b"content-type", ct),
-                (b"content-length", str(len(body)).encode()),
-            ],
-        })
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [
+                    (b"content-type", ct),
+                    (b"content-length", str(len(body)).encode()),
+                ],
+            }
+        )
         await send({"type": "http.response.body", "body": body})
 
 
 # =============================================================================
 # ResponseLimitMiddleware
 # =============================================================================
+
 
 class ResponseLimitMiddleware:
     """
@@ -215,12 +221,23 @@ class ResponseLimitMiddleware:
     Prevents oversized MCP tool responses from crashing clients.
     """
 
-    def __init__(self, app, *, max_bytes: int = 512 * 1024):
+    def __init__(
+        self,
+        app,
+        *,
+        max_bytes: int = 512 * 1024,
+        exclude_paths: tuple[str, ...] = ("/mcp",),
+    ):
         self.app = app
         self.max_bytes = max_bytes
+        self.exclude_paths = exclude_paths
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+
+        path = scope.get("path", "")
+        if any(path.startswith(p) for p in self.exclude_paths):
             return await self.app(scope, receive, send)
 
         body_parts: list[bytes] = []
@@ -261,20 +278,21 @@ class ResponseLimitMiddleware:
                         # Replace the body with a JSON error instead of
                         # returning an unreadable truncated payload.
                         ct_values = [
-                            v.decode() for k, v in headers
-                            if k == b"content-type"
+                            v.decode() for k, v in headers if k == b"content-type"
                         ]
                         is_json = any("json" in ct for ct in ct_values)
 
                         if is_json:
-                            full_body = json.dumps({
-                                "_truncated": True,
-                                "_message": (
-                                    f"Response exceeded {self.max_bytes} bytes "
-                                    f"and was truncated. Use more specific "
-                                    f"queries to reduce response size."
-                                ),
-                            }).encode()
+                            full_body = json.dumps(
+                                {
+                                    "_truncated": True,
+                                    "_message": (
+                                        f"Response exceeded {self.max_bytes} bytes "
+                                        f"and was truncated. Use more specific "
+                                        f"queries to reduce response size."
+                                    ),
+                                }
+                            ).encode()
 
                         headers.append((b"x-response-truncated", b"true"))
                         logger.warning(
@@ -286,18 +304,16 @@ class ResponseLimitMiddleware:
                         )
 
                     # Update content-length
-                    headers = [
-                        (k, v) for k, v in headers if k != b"content-length"
-                    ]
-                    headers.append(
-                        (b"content-length", str(len(full_body)).encode())
-                    )
+                    headers = [(k, v) for k, v in headers if k != b"content-length"]
+                    headers.append((b"content-length", str(len(full_body)).encode()))
 
                     await send({**start, "headers": headers})
-                    await send({
-                        "type": "http.response.body",
-                        "body": full_body,
-                    })
+                    await send(
+                        {
+                            "type": "http.response.body",
+                            "body": full_body,
+                        }
+                    )
 
         buffered_send._start_message = None
         await self.app(scope, receive, buffered_send)
@@ -306,6 +322,7 @@ class ResponseLimitMiddleware:
 # =============================================================================
 # AuditMiddleware
 # =============================================================================
+
 
 class AuditMiddleware:
     """
@@ -361,7 +378,9 @@ class AuditMiddleware:
                 "path": path,
                 "status": status_code,
                 "latency_ms": elapsed,
-                "client": token_info.get("client_name", "anonymous") if token_info else "unauthenticated",
+                "client": token_info.get("client_name", "anonymous")
+                if token_info
+                else "unauthenticated",
                 "auth_type": token_info.get("type", "none") if token_info else "none",
                 "permissions": token_info.get("permissions", []) if token_info else [],
             }

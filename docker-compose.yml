@@ -2,18 +2,20 @@
 #
 # Usage :
 #   docker compose build
-#   docker compose up -d
+#   docker compose up -d                  # prod (WAF + live-mem, S3 = remote via .env)
+#   docker compose --profile dev up -d    # dev  (MinIO + WAF + live-mem, S3 = local)
 #   docker compose logs -f
 #
 # Architecture réseau :
 #   Internet → WAF (port 8080) → live-mem-service (port 8002, interne)
-#   MinIO S3 (port 9000 interne, console 9001 exposée pour admin)
+#   MinIO S3 (port 9000 interne, console 9001 exposée pour admin) — profil dev uniquement
 #   Le service MCP n'est PAS exposé directement.
 services:
   # ─────────────────────────────────────────────────────────────
   # MinIO — S3-compatible object storage (local dev)
   # ─────────────────────────────────────────────────────────────
   minio:
+    profiles: [dev]
     image: minio/minio:latest
     command: server /data --console-address ":9001"
     ports:
@@ -38,6 +40,7 @@ services:
   # MinIO init — creates the bucket on first run, then exits
   # ─────────────────────────────────────────────────────────────
   minio-init:
+    profiles: [dev]
     image: minio/mc:latest
     depends_on:
       minio:
@@ -92,9 +95,6 @@ services:
     image: live-memory:latest
     # PAS de "ports:" — le WAF est le seul point d'entrée
     env_file: .env
-    depends_on:
-      minio-init:
-        condition: service_completed_successfully
     restart: unless-stopped
     networks:
       - live-mem-network
@@ -110,7 +110,7 @@ networks:
     driver: bridge
 
 volumes:
-  minio_data:
+  minio_data:  # dev profile only — not created in prod
 # Décommenter en production :
 #   caddy_data:
 #   caddy_config:

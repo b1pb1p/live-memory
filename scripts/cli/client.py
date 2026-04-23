@@ -19,7 +19,7 @@ Migration SSE → Streamable HTTP (issue #1) :
 import json
 import asyncio
 import logging
-from typing import Optional, Callable, Any
+from typing import Optional, Callable
 
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
@@ -37,8 +37,13 @@ class MCPClient:
     - Appel d'outils avec parsing des résultats
     """
 
-    def __init__(self, base_url: str, token: str = "", timeout: float = 300.0,
-                 call_delay: float = 0.0):
+    def __init__(
+        self,
+        base_url: str,
+        token: str = "",
+        timeout: float = 300.0,
+        call_delay: float = 0.0,
+    ):
         self.base_url = base_url.rstrip("/")
         self.token = token
         self.timeout = timeout

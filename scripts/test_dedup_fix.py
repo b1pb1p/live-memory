@@ -10,7 +10,6 @@ Le nouveau algorithme (boucle while + re-détection) corrige le problème.
 
 import sys
 import os
-import re
 
 # Ajouter src/ au path pour importer le module
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -142,7 +141,11 @@ test("0 doublons restants", len(remaining) == 0, f"got {len(remaining)}")
 print("\n4. Intégrité du contenu après déduplication")
 final_sections = _parse_sections(content)
 headings = [s["heading"] for s in final_sections if s["heading"]]
-test("8 headings uniques conservés", len(headings) == 8, f"got {len(headings)}: {headings}")
+test(
+    "8 headings uniques conservés",
+    len(headings) == 8,
+    f"got {len(headings)}: {headings}",
+)
 
 # Vérifier qu'aucun heading n'est dupliqué
 heading_counts = {}

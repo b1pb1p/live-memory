@@ -14,7 +14,6 @@ Voir MCP_TOOLS_SPEC.md pour les signatures et retours attendus.
 """
 
 import re
-import json
 import base64
 import tarfile
 import io
@@ -33,8 +32,8 @@ from .models import SpaceMeta
 SPACE_ID_REGEX = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
 
 # VULN-07 fix : limites de taille pour les contenus
-MAX_RULES_SIZE = 50_000            # 50K caractères max pour les rules
-MAX_DESCRIPTION_SIZE = 500         # 500 caractères max pour la description
+MAX_RULES_SIZE = 50_000  # 50K caractères max pour les rules
+MAX_DESCRIPTION_SIZE = 500  # 500 caractères max pour la description
 
 
 class SpaceService:
@@ -151,7 +150,10 @@ class SpaceService:
         # Lire les métadonnées existantes
         meta = await storage.get_json(f"{space_id}/_meta.json")
         if meta is None:
-            return {"status": "not_found", "message": f"Espace '{space_id}' introuvable"}
+            return {
+                "status": "not_found",
+                "message": f"Espace '{space_id}' introuvable",
+            }
 
         # Appliquer les modifications
         updated_fields = []
@@ -214,7 +216,10 @@ class SpaceService:
 
         # Vérifier que l'espace existe
         if not await storage.exists(f"{space_id}/_meta.json"):
-            return {"status": "not_found", "message": f"Espace '{space_id}' introuvable"}
+            return {
+                "status": "not_found",
+                "message": f"Espace '{space_id}' introuvable",
+            }
 
         # Écrire les nouvelles rules
         await storage.put(f"{space_id}/_rules.md", rules)
@@ -264,17 +269,23 @@ class SpaceService:
             # Compter les notes live et fichiers bank
             live_objects = await storage.list_objects(f"{sid}/live/")
             bank_objects = await storage.list_objects(f"{sid}/bank/")
-            live_count = len([o for o in live_objects if not o["Key"].endswith(".keep")])
-            bank_count = len([o for o in bank_objects if not o["Key"].endswith(".keep")])
+            live_count = len(
+                [o for o in live_objects if not o["Key"].endswith(".keep")]
+            )
+            bank_count = len(
+                [o for o in bank_objects if not o["Key"].endswith(".keep")]
+            )
 
-            spaces.append({
-                "space_id": sid,
-                "description": meta.get("description", ""),
-                "owner": meta.get("owner", ""),
-                "created_at": meta.get("created_at", ""),
-                "live_notes_count": live_count,
-                "bank_files_count": bank_count,
-            })
+            spaces.append(
+                {
+                    "space_id": sid,
+                    "description": meta.get("description", ""),
+                    "owner": meta.get("owner", ""),
+                    "created_at": meta.get("created_at", ""),
+                    "live_notes_count": live_count,
+                    "bank_files_count": bank_count,
+                }
+            )
 
         return {"status": "ok", "spaces": spaces, "total": len(spaces)}
 
@@ -295,7 +306,10 @@ class SpaceService:
         # Lire les métadonnées
         meta = await storage.get_json(f"{space_id}/_meta.json")
         if meta is None:
-            return {"status": "not_found", "message": f"Espace '{space_id}' introuvable"}
+            return {
+                "status": "not_found",
+                "message": f"Espace '{space_id}' introuvable",
+            }
 
         # Stats des notes live
         live_objects = await storage.list_objects(f"{space_id}/live/")
@@ -341,7 +355,10 @@ class SpaceService:
         storage = get_storage()
         rules = await storage.get(f"{space_id}/_rules.md")
         if rules is None:
-            return {"status": "not_found", "message": f"Espace '{space_id}' introuvable"}
+            return {
+                "status": "not_found",
+                "message": f"Espace '{space_id}' introuvable",
+            }
 
         return {"status": "ok", "space_id": space_id, "rules": rules}
 
@@ -360,7 +377,10 @@ class SpaceService:
         # Lire meta + rules
         meta = await storage.get_json(f"{space_id}/_meta.json")
         if meta is None:
-            return {"status": "not_found", "message": f"Espace '{space_id}' introuvable"}
+            return {
+                "status": "not_found",
+                "message": f"Espace '{space_id}' introuvable",
+            }
 
         rules = await storage.get(f"{space_id}/_rules.md") or ""
 
@@ -402,7 +422,10 @@ class SpaceService:
 
         # Vérifier l'existence
         if not await storage.exists(f"{space_id}/_meta.json"):
-            return {"status": "not_found", "message": f"Espace '{space_id}' introuvable"}
+            return {
+                "status": "not_found",
+                "message": f"Espace '{space_id}' introuvable",
+            }
 
         # Lire tous les fichiers de l'espace
         all_objects = await storage.list_and_get(f"{space_id}/", exclude_keep=False)
@@ -412,7 +435,7 @@ class SpaceService:
         with tarfile.open(fileobj=buf, mode="w:gz") as tar:
             for obj in all_objects:
                 # Nom relatif dans l'archive (sans le space_id/ prefix)
-                arcname = obj["key"][len(space_id) + 1:]
+                arcname = obj["key"][len(space_id) + 1 :]
                 data = obj["content"].encode("utf-8")
                 info = tarfile.TarInfo(name=arcname)
                 info.size = len(data)
@@ -442,7 +465,10 @@ class SpaceService:
 
         # Vérifier l'existence
         if not await storage.exists(f"{space_id}/_meta.json"):
-            return {"status": "not_found", "message": f"Espace '{space_id}' introuvable"}
+            return {
+                "status": "not_found",
+                "message": f"Espace '{space_id}' introuvable",
+            }
 
         # Lister TOUS les fichiers de l'espace
         all_objects = await storage.list_objects(f"{space_id}/")

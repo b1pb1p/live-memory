@@ -42,8 +42,14 @@ CALL_DELAY = 0.3  # Délai entre appels MCP (secondes) — réduit grâce aux ra
 # Affichage (partagé entre toutes les suites)
 # ═══════════════════════════════════════════════════════════════
 
-G = "\033[92m"; R = "\033[91m"; Y = "\033[93m"; C = "\033[96m"
-M = "\033[95m"; B = "\033[1m"; D = "\033[2m"; Z = "\033[0m"
+G = "\033[92m"
+R = "\033[91m"
+Y = "\033[93m"
+C = "\033[96m"
+M = "\033[95m"
+B = "\033[1m"
+D = "\033[2m"
+Z = "\033[0m"
 
 passed = 0
 failed = 0
@@ -139,43 +145,57 @@ async def suite_recette(admin: MCPClient, url: str, do_cleanup: bool):
         if r.get("status") in ("healthy", "degraded"):
             test_pass("health check", f"status={r.get('status')}")
         else:
-            test_fail("health check", r.get("message", str(r))); return
+            test_fail("health check", r.get("message", str(r)))
+            return
     except Exception as e:
-        test_fail("health check", str(e)); return
+        test_fail("health check", str(e))
+        return
 
     # 2. Créer token agent
     section("Recette 2/7 — Token agent")
     try:
-        r = await admin.call_tool("admin_create_token", {
-            "name": RECETTE_TOKEN_NAME,
-            "permissions": "read,write",
-            "space_ids": RECETTE_SPACE,
-            "expires_in_days": 1,
-        })
+        r = await admin.call_tool(
+            "admin_create_token",
+            {
+                "name": RECETTE_TOKEN_NAME,
+                "permissions": "read,write",
+                "space_ids": RECETTE_SPACE,
+                "expires_in_days": 1,
+            },
+        )
         if r.get("status") == "created":
             agent_token = r["token"]
             test_pass("create token", f"{RECETTE_TOKEN_NAME}")
         else:
-            test_fail("create token", r.get("message", "")); return
+            test_fail("create token", r.get("message", ""))
+            return
     except Exception as e:
-        test_fail("create token", str(e)); return
+        test_fail("create token", str(e))
+        return
 
-    agent = MCPClient(base_url=url, token=agent_token, timeout=600, call_delay=CALL_DELAY)
+    agent = MCPClient(
+        base_url=url, token=agent_token, timeout=600, call_delay=CALL_DELAY
+    )
 
     # 3. Créer space
     section("Recette 3/7 — Espace + rules")
     try:
-        r = await agent.call_tool("space_create", {
-            "space_id": RECETTE_SPACE,
-            "description": "Recette Ubuntu 22.04 → 24.04",
-            "rules": RECETTE_RULES,
-        })
+        r = await agent.call_tool(
+            "space_create",
+            {
+                "space_id": RECETTE_SPACE,
+                "description": "Recette Ubuntu 22.04 → 24.04",
+                "rules": RECETTE_RULES,
+            },
+        )
         if r.get("status") in ("created", "already_exists"):
             test_pass("space_create", RECETTE_SPACE)
         else:
-            test_fail("space_create", r.get("message", "")); return
+            test_fail("space_create", r.get("message", ""))
+            return
     except Exception as e:
-        test_fail("space_create", str(e)); return
+        test_fail("space_create", str(e))
+        return
 
     pause("Space créé → Notes")
 
@@ -184,11 +204,14 @@ async def suite_recette(admin: MCPClient, url: str, do_cleanup: bool):
     notes_ok = 0
     for cat, content in RECETTE_NOTES:
         try:
-            r = await agent.call_tool("live_note", {
-                "space_id": RECETTE_SPACE,
-                "category": cat,
-                "content": content,
-            })
+            r = await agent.call_tool(
+                "live_note",
+                {
+                    "space_id": RECETTE_SPACE,
+                    "category": cat,
+                    "content": content,
+                },
+            )
             if r.get("status") in ("ok", "created"):
                 notes_ok += 1
         except Exception:
@@ -207,7 +230,9 @@ async def suite_recette(admin: MCPClient, url: str, do_cleanup: bool):
         if r.get("status") == "ok" and r.get("notes_processed", 0) > 0:
             test_pass("consolidate", f"{r['notes_processed']} notes → bank ({dur}s)")
         else:
-            test_fail("consolidate", r.get("message", f"notes={r.get('notes_processed', 0)}"))
+            test_fail(
+                "consolidate", r.get("message", f"notes={r.get('notes_processed', 0)}")
+            )
     except Exception as e:
         test_fail("consolidate", str(e))
 
@@ -220,7 +245,9 @@ async def suite_recette(admin: MCPClient, url: str, do_cleanup: bool):
         files = r.get("files", [])
         if len(files) > 0:
             names = [f.get("filename", "?") for f in files]
-            test_pass("bank_read_all", f"{len(files)} fichiers : {', '.join(names[:5])}")
+            test_pass(
+                "bank_read_all", f"{len(files)} fichiers : {', '.join(names[:5])}"
+            )
         else:
             test_fail("bank_read_all", "aucun fichier")
     except Exception as e:
@@ -236,18 +263,28 @@ async def suite_recette(admin: MCPClient, url: str, do_cleanup: bool):
         broken = []
         for bf in bank_files:
             fname = bf.get("filename", "")
-            r_read = await agent.call_tool("bank_read", {
-                "space_id": RECETTE_SPACE, "filename": fname,
-            })
+            r_read = await agent.call_tool(
+                "bank_read",
+                {
+                    "space_id": RECETTE_SPACE,
+                    "filename": fname,
+                },
+            )
             if r_read.get("status") == "ok":
                 readable += 1
             else:
                 broken.append(fname)
 
         if broken:
-            test_fail("bank coherence", f"{len(broken)} fichier(s) illisibles via bank_read : {broken}")
+            test_fail(
+                "bank coherence",
+                f"{len(broken)} fichier(s) illisibles via bank_read : {broken}",
+            )
         elif readable > 0:
-            test_pass("bank coherence", f"{readable}/{len(bank_files)} fichiers lisibles via bank_read")
+            test_pass(
+                "bank coherence",
+                f"{readable}/{len(bank_files)} fichiers lisibles via bank_read",
+            )
         else:
             test_skip("bank coherence", "aucun fichier bank")
     except Exception as e:
@@ -257,7 +294,9 @@ async def suite_recette(admin: MCPClient, url: str, do_cleanup: bool):
     if do_cleanup:
         section("Recette 7/7 — Cleanup")
         try:
-            await admin.call_tool("space_delete", {"space_id": RECETTE_SPACE, "confirm": True})
+            await admin.call_tool(
+                "space_delete", {"space_id": RECETTE_SPACE, "confirm": True}
+            )
             test_pass("cleanup recette", f"space '{RECETTE_SPACE}' supprimé")
         except Exception:
             pass
@@ -265,7 +304,9 @@ async def suite_recette(admin: MCPClient, url: str, do_cleanup: bool):
             r = await admin.call_tool("admin_list_tokens", {})
             for t in r.get("tokens", []):
                 if t.get("name") == RECETTE_TOKEN_NAME and not t.get("revoked"):
-                    await admin.call_tool("admin_revoke_token", {"token_hash": t["hash"]})
+                    await admin.call_tool(
+                        "admin_revoke_token", {"token_hash": t["hash"]}
+                    )
         except Exception:
             pass
 
@@ -301,13 +342,21 @@ async def suite_isolation(admin: MCPClient, url: str, do_cleanup: bool):
         ("iso-readonly", "read", ISO_SPACE_A, "read-only"),
     ]:
         try:
-            r = await admin.call_tool("admin_create_token", {
-                "name": name, "permissions": perms, "space_ids": sids,
-            })
+            r = await admin.call_tool(
+                "admin_create_token",
+                {
+                    "name": name,
+                    "permissions": perms,
+                    "space_ids": sids,
+                },
+            )
             if r.get("status") == "created":
-                if label == "client-A": token_a = r["token"]
-                elif label == "client-B": token_b = r["token"]
-                else: token_ro = r["token"]
+                if label == "client-A":
+                    token_a = r["token"]
+                elif label == "client-B":
+                    token_b = r["token"]
+                else:
+                    token_ro = r["token"]
                 test_pass(f"token {label}", f"perms={perms}, spaces={sids}")
             else:
                 test_fail(f"token {label}", r.get("message", ""))
@@ -315,13 +364,19 @@ async def suite_isolation(admin: MCPClient, url: str, do_cleanup: bool):
             test_fail(f"token {label}", str(e))
 
     if not (token_a and token_b and token_ro):
-        test_fail("setup", "tokens manquants, arrêt"); return
+        test_fail("setup", "tokens manquants, arrêt")
+        return
 
     for sid in [ISO_SPACE_A, ISO_SPACE_B]:
         try:
-            r = await admin.call_tool("space_create", {
-                "space_id": sid, "description": f"Isolation {sid}", "rules": ISO_RULES,
-            })
+            r = await admin.call_tool(
+                "space_create",
+                {
+                    "space_id": sid,
+                    "description": f"Isolation {sid}",
+                    "rules": ISO_RULES,
+                },
+            )
             if r.get("status") in ("created", "already_exists"):
                 test_pass(f"space {sid}", "créé")
             else:
@@ -332,13 +387,22 @@ async def suite_isolation(admin: MCPClient, url: str, do_cleanup: bool):
     # Écrire une note + backup dans chaque space
     for sid in [ISO_SPACE_A, ISO_SPACE_B]:
         try:
-            await admin.call_tool("live_note", {
-                "space_id": sid, "category": "observation",
-                "content": f"Note de test dans {sid}", "agent": "admin-setup",
-            })
-            await admin.call_tool("backup_create", {
-                "space_id": sid, "description": f"Backup test {sid}",
-            })
+            await admin.call_tool(
+                "live_note",
+                {
+                    "space_id": sid,
+                    "category": "observation",
+                    "content": f"Note de test dans {sid}",
+                    "agent": "admin-setup",
+                },
+            )
+            await admin.call_tool(
+                "backup_create",
+                {
+                    "space_id": sid,
+                    "description": f"Backup test {sid}",
+                },
+            )
         except Exception:
             pass
 
@@ -383,9 +447,14 @@ async def suite_isolation(admin: MCPClient, url: str, do_cleanup: bool):
 
     # A ne peut pas écrire dans B
     try:
-        r = await ca.call_tool("live_note", {
-            "space_id": ISO_SPACE_B, "category": "observation", "content": "Intrusion",
-        })
+        r = await ca.call_tool(
+            "live_note",
+            {
+                "space_id": ISO_SPACE_B,
+                "category": "observation",
+                "content": "Intrusion",
+            },
+        )
         if r.get("status") == "error":
             test_pass("A écrire B REFUSÉ", "isolation OK")
         else:
@@ -412,7 +481,9 @@ async def suite_isolation(admin: MCPClient, url: str, do_cleanup: bool):
     try:
         r = await ca.call_tool("backup_list", {})
         backups = r.get("backups", [])
-        bk_spaces = {b.get("space_id", b.get("backup_id", "").split("/")[0]) for b in backups}
+        bk_spaces = {
+            b.get("space_id", b.get("backup_id", "").split("/")[0]) for b in backups
+        }
         if ISO_SPACE_B not in bk_spaces:
             test_pass("backup_list A filtré", f"ne voit PAS {ISO_SPACE_B}")
         else:
@@ -423,7 +494,9 @@ async def suite_isolation(admin: MCPClient, url: str, do_cleanup: bool):
     try:
         r = await cb.call_tool("backup_list", {})
         backups = r.get("backups", [])
-        bk_spaces = {b.get("space_id", b.get("backup_id", "").split("/")[0]) for b in backups}
+        bk_spaces = {
+            b.get("space_id", b.get("backup_id", "").split("/")[0]) for b in backups
+        }
         if ISO_SPACE_A not in bk_spaces:
             test_pass("backup_list B filtré", f"ne voit PAS {ISO_SPACE_A}")
         else:
@@ -446,9 +519,14 @@ async def suite_isolation(admin: MCPClient, url: str, do_cleanup: bool):
         test_fail("reader lire A", str(e))
 
     try:
-        r = await ro.call_tool("live_note", {
-            "space_id": ISO_SPACE_A, "category": "observation", "content": "Tentative RO",
-        })
+        r = await ro.call_tool(
+            "live_note",
+            {
+                "space_id": ISO_SPACE_A,
+                "category": "observation",
+                "content": "Tentative RO",
+            },
+        )
         if r.get("status") == "error" and "write" in r.get("message", "").lower():
             test_pass("reader écrire REFUSÉ", "write requis")
         else:
@@ -457,13 +535,20 @@ async def suite_isolation(admin: MCPClient, url: str, do_cleanup: bool):
         test_fail("reader écrire", str(e))
 
     try:
-        r = await ro.call_tool("space_create", {
-            "space_id": "iso-unauthorized", "description": "Non", "rules": "# no",
-        })
+        r = await ro.call_tool(
+            "space_create",
+            {
+                "space_id": "iso-unauthorized",
+                "description": "Non",
+                "rules": "# no",
+            },
+        )
         if r.get("status") == "error":
             test_pass("reader space_create REFUSÉ", "write requis")
         else:
-            test_fail("reader space_create DEVRAIT ÉCHOUER", f"status={r.get('status')}")
+            test_fail(
+                "reader space_create DEVRAIT ÉCHOUER", f"status={r.get('status')}"
+            )
     except Exception as e:
         test_fail("reader space_create", str(e))
 
@@ -474,10 +559,14 @@ async def suite_isolation(admin: MCPClient, url: str, do_cleanup: bool):
 
     # Client A écrit une note dans son space
     try:
-        r = await ca.call_tool("live_note", {
-            "space_id": ISO_SPACE_A, "category": "observation",
-            "content": "Note test consolidation permissions",
-        })
+        r = await ca.call_tool(
+            "live_note",
+            {
+                "space_id": ISO_SPACE_A,
+                "category": "observation",
+                "content": "Note test consolidation permissions",
+            },
+        )
         vprint(f"live_note: {r.get('status')}")
     except Exception:
         pass
@@ -486,24 +575,38 @@ async def suite_isolation(admin: MCPClient, url: str, do_cleanup: bool):
     try:
         r = await ca.call_tool("bank_consolidate", {"space_id": ISO_SPACE_A})
         if r.get("status") == "ok":
-            test_pass("write+agent='' → auto caller", f"{r.get('notes_processed', 0)} notes consolidées")
-        elif r.get("status") == "error" and "permission" in r.get("message", "").lower():
+            test_pass(
+                "write+agent='' → auto caller",
+                f"{r.get('notes_processed', 0)} notes consolidées",
+            )
+        elif (
+            r.get("status") == "error" and "permission" in r.get("message", "").lower()
+        ):
             test_fail("write+agent='' REFUSÉ", r.get("message", ""))
         else:
             # Peut échouer pour d'autres raisons (pas de notes, timeout...) — pas un problème de permission
-            test_pass("write+agent='' → pas d'erreur permission", f"status={r.get('status')}")
+            test_pass(
+                "write+agent='' → pas d'erreur permission", f"status={r.get('status')}"
+            )
     except Exception as e:
         test_fail("write+agent=''", str(e))
 
     # write + agent=autre → REFUSÉ (admin requis)
     try:
-        r = await ca.call_tool("bank_consolidate", {
-            "space_id": ISO_SPACE_A, "agent": "admin-setup",
-        })
+        r = await ca.call_tool(
+            "bank_consolidate",
+            {
+                "space_id": ISO_SPACE_A,
+                "agent": "admin-setup",
+            },
+        )
         if r.get("status") == "error" and "admin" in r.get("message", "").lower():
             test_pass("write+agent=autre REFUSÉ", "admin requis")
         else:
-            test_fail("write+agent=autre DEVRAIT ÉCHOUER", f"status={r.get('status')}, msg={r.get('message', '')}")
+            test_fail(
+                "write+agent=autre DEVRAIT ÉCHOUER",
+                f"status={r.get('status')}, msg={r.get('message', '')}",
+            )
     except Exception as e:
         test_fail("write+agent=autre", str(e))
 
@@ -523,11 +626,17 @@ async def suite_isolation(admin: MCPClient, url: str, do_cleanup: bool):
     section("Isolation 6/7 — Auto-ajout space au token (v0.7.1)")
 
     try:
-        r = await ca.call_tool("space_create", {
-            "space_id": ISO_SPACE_C,
-            "description": "Test auto-ajout", "rules": ISO_RULES,
-        })
-        vprint(f"status={r.get('status')}, token_auto_updated={r.get('token_auto_updated')}")
+        r = await ca.call_tool(
+            "space_create",
+            {
+                "space_id": ISO_SPACE_C,
+                "description": "Test auto-ajout",
+                "rules": ISO_RULES,
+            },
+        )
+        vprint(
+            f"status={r.get('status')}, token_auto_updated={r.get('token_auto_updated')}"
+        )
         if r.get("status") == "created":
             if r.get("token_auto_updated"):
                 test_pass("auto-ajout space → token", r.get("token_message", "OK"))
@@ -554,7 +663,9 @@ async def suite_isolation(admin: MCPClient, url: str, do_cleanup: bool):
         section("Isolation 6/6 — Cleanup")
         for sid in [ISO_SPACE_A, ISO_SPACE_B, ISO_SPACE_C]:
             try:
-                await admin.call_tool("space_delete", {"space_id": sid, "confirm": True})
+                await admin.call_tool(
+                    "space_delete", {"space_id": sid, "confirm": True}
+                )
             except Exception:
                 pass
         try:
@@ -562,14 +673,18 @@ async def suite_isolation(admin: MCPClient, url: str, do_cleanup: bool):
             for b in r.get("backups", []):
                 bid = b.get("backup_id", "")
                 if bid.startswith("iso-test-"):
-                    await admin.call_tool("backup_delete", {"backup_id": bid, "confirm": True})
+                    await admin.call_tool(
+                        "backup_delete", {"backup_id": bid, "confirm": True}
+                    )
         except Exception:
             pass
         try:
             r = await admin.call_tool("admin_list_tokens", {})
             for t in r.get("tokens", []):
                 if t.get("name", "").startswith("iso-") and not t.get("revoked"):
-                    await admin.call_tool("admin_revoke_token", {"token_hash": t["hash"]})
+                    await admin.call_tool(
+                        "admin_revoke_token", {"token_hash": t["hash"]}
+                    )
         except Exception:
             pass
         test_pass("cleanup isolation", "OK")
@@ -594,7 +709,10 @@ async def suite_qualite(admin: MCPClient, url: str, do_cleanup: bool):
     try:
         r = await admin.call_tool("system_health", {})
         if r.get("status") in ("healthy", "degraded"):
-            test_pass("system_health", f"S3={r.get('services',{}).get('s3',{}).get('status','?')}")
+            test_pass(
+                "system_health",
+                f"S3={r.get('services', {}).get('s3', {}).get('status', '?')}",
+            )
         else:
             test_fail("system_health", str(r))
     except Exception as e:
@@ -603,7 +721,10 @@ async def suite_qualite(admin: MCPClient, url: str, do_cleanup: bool):
     try:
         r = await admin.call_tool("system_about", {})
         if r.get("status") == "ok" and r.get("tools_count", 0) >= 25:
-            test_pass("system_about", f"{r.get('tools_count')} outils v{r.get('version','?')}")
+            test_pass(
+                "system_about",
+                f"{r.get('tools_count')} outils v{r.get('version', '?')}",
+            )
         else:
             test_fail("system_about", str(r))
     except Exception as e:
@@ -613,7 +734,10 @@ async def suite_qualite(admin: MCPClient, url: str, do_cleanup: bool):
         r = await admin.call_tool("system_whoami", {})
         if r.get("status") == "ok" and r.get("client_name"):
             perms = ", ".join(r.get("permissions", []))
-            test_pass("system_whoami", f"identity={r['client_name']}, type={r.get('auth_type','?')}, perms={perms}")
+            test_pass(
+                "system_whoami",
+                f"identity={r['client_name']}, type={r.get('auth_type', '?')}, perms={perms}",
+            )
         else:
             test_fail("system_whoami", str(r))
     except Exception as e:
@@ -623,17 +747,24 @@ async def suite_qualite(admin: MCPClient, url: str, do_cleanup: bool):
     section("Qualité — Admin tokens")
     agent_token = ""
     try:
-        r = await admin.call_tool("admin_create_token", {
-            "name": QUALITE_TOKEN, "permissions": "read,write",
-            "space_ids": QUALITE_SPACE, "expires_in_days": 1,
-        })
+        r = await admin.call_tool(
+            "admin_create_token",
+            {
+                "name": QUALITE_TOKEN,
+                "permissions": "read,write",
+                "space_ids": QUALITE_SPACE,
+                "expires_in_days": 1,
+            },
+        )
         if r.get("status") == "created":
             agent_token = r["token"]
             test_pass("admin_create_token", QUALITE_TOKEN)
         else:
-            test_fail("admin_create_token", str(r)); return
+            test_fail("admin_create_token", str(r))
+            return
     except Exception as e:
-        test_fail("admin_create_token", str(e)); return
+        test_fail("admin_create_token", str(e))
+        return
 
     try:
         r = await admin.call_tool("admin_list_tokens", {})
@@ -645,48 +776,75 @@ async def suite_qualite(admin: MCPClient, url: str, do_cleanup: bool):
     except Exception as e:
         test_fail("admin_list_tokens", str(e))
 
-    agent = MCPClient(base_url=url, token=agent_token, timeout=600, call_delay=CALL_DELAY)
+    agent = MCPClient(
+        base_url=url, token=agent_token, timeout=600, call_delay=CALL_DELAY
+    )
 
     # Space
     section("Qualité — Space")
     try:
-        r = await agent.call_tool("space_create", {
-            "space_id": QUALITE_SPACE, "description": "Test qualité",
-            "rules": "# Rules\n### context.md\nContexte test.",
-        })
-        test_pass("space_create", QUALITE_SPACE) if r.get("status") in ("created", "already_exists") else test_fail("space_create", str(r))
+        r = await agent.call_tool(
+            "space_create",
+            {
+                "space_id": QUALITE_SPACE,
+                "description": "Test qualité",
+                "rules": "# Rules\n### context.md\nContexte test.",
+            },
+        )
+        test_pass("space_create", QUALITE_SPACE) if r.get("status") in (
+            "created",
+            "already_exists",
+        ) else test_fail("space_create", str(r))
     except Exception as e:
         test_fail("space_create", str(e))
 
     for tool, args in [
         ("space_list", {}),
-        ("space_update", {"space_id": QUALITE_SPACE, "description": "Test qualité v0.7.7"}),
+        (
+            "space_update",
+            {"space_id": QUALITE_SPACE, "description": "Test qualité v0.7.7"},
+        ),
         ("space_info", {"space_id": QUALITE_SPACE}),
         ("space_rules", {"space_id": QUALITE_SPACE}),
     ]:
         try:
             r = await agent.call_tool(tool, args)
-            test_pass(tool, "OK") if r.get("status") == "ok" else test_fail(tool, str(r))
+            test_pass(tool, "OK") if r.get("status") == "ok" else test_fail(
+                tool, str(r)
+            )
         except Exception as e:
             test_fail(tool, str(e))
 
     # space_update_rules (admin only, v1.2.0)
     try:
-        r = await admin.call_tool("space_update_rules", {
-            "space_id": QUALITE_SPACE,
-            "rules": "# Test Rules v1.2.0\n\nRules de test pour space_update_rules.",
-        })
-        test_pass("space_update_rules", f"OK ({r.get('rules_size', '?')} o)") if r.get("status") == "ok" else test_fail("space_update_rules", str(r))
+        r = await admin.call_tool(
+            "space_update_rules",
+            {
+                "space_id": QUALITE_SPACE,
+                "rules": "# Test Rules v1.2.0\n\nRules de test pour space_update_rules.",
+            },
+        )
+        test_pass("space_update_rules", f"OK ({r.get('rules_size', '?')} o)") if r.get(
+            "status"
+        ) == "ok" else test_fail("space_update_rules", str(r))
     except Exception as e:
         test_fail("space_update_rules", str(e))
 
     # Live
     section("Qualité — Live")
     try:
-        r = await agent.call_tool("live_note", {
-            "space_id": QUALITE_SPACE, "category": "observation", "content": "Test qualité note",
-        })
-        test_pass("live_note", "OK") if r.get("status") in ("ok", "created") else test_fail("live_note", str(r))
+        r = await agent.call_tool(
+            "live_note",
+            {
+                "space_id": QUALITE_SPACE,
+                "category": "observation",
+                "content": "Test qualité note",
+            },
+        )
+        test_pass("live_note", "OK") if r.get("status") in (
+            "ok",
+            "created",
+        ) else test_fail("live_note", str(r))
     except Exception as e:
         test_fail("live_note", str(e))
 
@@ -696,7 +854,9 @@ async def suite_qualite(admin: MCPClient, url: str, do_cleanup: bool):
     ]:
         try:
             r = await agent.call_tool(tool, args)
-            test_pass(tool, "OK") if r.get("status") == "ok" else test_fail(tool, str(r))
+            test_pass(tool, "OK") if r.get("status") == "ok" else test_fail(
+                tool, str(r)
+            )
         except Exception as e:
             test_fail(tool, str(e))
 
@@ -707,7 +867,9 @@ async def suite_qualite(admin: MCPClient, url: str, do_cleanup: bool):
         r = await agent.call_tool("bank_consolidate", {"space_id": QUALITE_SPACE})
         dur = round(time.monotonic() - t0, 1)
         if r.get("status") == "ok":
-            test_pass("bank_consolidate", f"{r.get('notes_processed',0)} notes ({dur}s)")
+            test_pass(
+                "bank_consolidate", f"{r.get('notes_processed', 0)} notes ({dur}s)"
+            )
         else:
             test_fail("bank_consolidate", str(r))
     except Exception as e:
@@ -719,7 +881,9 @@ async def suite_qualite(admin: MCPClient, url: str, do_cleanup: bool):
     ]:
         try:
             r = await agent.call_tool(tool, args)
-            test_pass(tool, "OK") if r.get("status") == "ok" else test_fail(tool, str(r))
+            test_pass(tool, "OK") if r.get("status") == "ok" else test_fail(
+                tool, str(r)
+            )
         except Exception as e:
             test_fail(tool, str(e))
 
@@ -728,13 +892,18 @@ async def suite_qualite(admin: MCPClient, url: str, do_cleanup: bool):
 
     # 1. Écrire un fichier dans un sous-dossier
     try:
-        r = await admin.call_tool("bank_write", {
-            "space_id": QUALITE_SPACE,
-            "filename": "subdir/test_file.md",
-            "content": "# Test\n\nFichier de test dans un sous-dossier.",
-        })
+        r = await admin.call_tool(
+            "bank_write",
+            {
+                "space_id": QUALITE_SPACE,
+                "filename": "subdir/test_file.md",
+                "content": "# Test\n\nFichier de test dans un sous-dossier.",
+            },
+        )
         if r.get("status") == "ok":
-            test_pass("bank_write (subdir)", f"subdir/test_file.md ({r.get('size',0)} o)")
+            test_pass(
+                "bank_write (subdir)", f"subdir/test_file.md ({r.get('size', 0)} o)"
+            )
         else:
             test_fail("bank_write (subdir)", str(r))
     except Exception as e:
@@ -745,9 +914,14 @@ async def suite_qualite(admin: MCPClient, url: str, do_cleanup: bool):
         r = await agent.call_tool("bank_list", {"space_id": QUALITE_SPACE})
         filenames = [f.get("filename", "") for f in r.get("files", [])]
         if "subdir/test_file.md" in filenames:
-            test_pass("bank_list (relpath)", f"'subdir/test_file.md' trouvé dans {filenames}")
+            test_pass(
+                "bank_list (relpath)", f"'subdir/test_file.md' trouvé dans {filenames}"
+            )
         elif "test_file.md" in filenames:
-            test_fail("bank_list (relpath)", f"retourne basename au lieu du chemin relatif: {filenames}")
+            test_fail(
+                "bank_list (relpath)",
+                f"retourne basename au lieu du chemin relatif: {filenames}",
+            )
         else:
             test_fail("bank_list (relpath)", f"fichier non trouvé dans: {filenames}")
     except Exception as e:
@@ -758,22 +932,27 @@ async def suite_qualite(admin: MCPClient, url: str, do_cleanup: bool):
         r = await agent.call_tool("bank_read_all", {"space_id": QUALITE_SPACE})
         filenames = [f.get("filename", "") for f in r.get("files", [])]
         if "subdir/test_file.md" in filenames:
-            test_pass("bank_read_all (relpath)", f"'subdir/test_file.md' trouvé")
+            test_pass("bank_read_all (relpath)", "'subdir/test_file.md' trouvé")
         elif "test_file.md" in filenames:
             test_fail("bank_read_all (relpath)", f"retourne basename: {filenames}")
         else:
-            test_fail("bank_read_all (relpath)", f"fichier non trouvé dans: {filenames}")
+            test_fail(
+                "bank_read_all (relpath)", f"fichier non trouvé dans: {filenames}"
+            )
     except Exception as e:
         test_fail("bank_read_all (relpath)", str(e))
 
     # 4. Lire le fichier par chemin relatif
     try:
-        r = await agent.call_tool("bank_read", {
-            "space_id": QUALITE_SPACE,
-            "filename": "subdir/test_file.md",
-        })
+        r = await agent.call_tool(
+            "bank_read",
+            {
+                "space_id": QUALITE_SPACE,
+                "filename": "subdir/test_file.md",
+            },
+        )
         if r.get("status") == "ok" and "Test" in r.get("content", ""):
-            test_pass("bank_read (subdir)", f"OK ({r.get('size',0)} o)")
+            test_pass("bank_read (subdir)", f"OK ({r.get('size', 0)} o)")
         else:
             test_fail("bank_read (subdir)", str(r))
     except Exception as e:
@@ -781,12 +960,15 @@ async def suite_qualite(admin: MCPClient, url: str, do_cleanup: bool):
 
     # 5. Supprimer par chemin relatif
     try:
-        r = await admin.call_tool("bank_delete", {
-            "space_id": QUALITE_SPACE,
-            "filename": "subdir/test_file.md",
-        })
+        r = await admin.call_tool(
+            "bank_delete",
+            {
+                "space_id": QUALITE_SPACE,
+                "filename": "subdir/test_file.md",
+            },
+        )
         if r.get("status") == "deleted":
-            test_pass("bank_delete (subdir)", f"{r.get('files_deleted',0)} supprimés")
+            test_pass("bank_delete (subdir)", f"{r.get('files_deleted', 0)} supprimés")
         else:
             test_fail("bank_delete (subdir)", str(r))
     except Exception as e:
@@ -794,11 +976,18 @@ async def suite_qualite(admin: MCPClient, url: str, do_cleanup: bool):
 
     # 6. bank_repair dry-run (doit être propre après cleanup)
     try:
-        r = await admin.call_tool("bank_repair", {
-            "space_id": QUALITE_SPACE, "dry_run": True,
-        })
+        r = await admin.call_tool(
+            "bank_repair",
+            {
+                "space_id": QUALITE_SPACE,
+                "dry_run": True,
+            },
+        )
         if r.get("status") == "ok":
-            test_pass("bank_repair", f"scan: {r.get('files_ok',0)} OK, {r.get('files_to_repair',0)} à réparer, {r.get('duplicates_found',0)} doublons")
+            test_pass(
+                "bank_repair",
+                f"scan: {r.get('files_ok', 0)} OK, {r.get('files_to_repair', 0)} à réparer, {r.get('duplicates_found', 0)} doublons",
+            )
         else:
             test_fail("bank_repair", str(r))
     except Exception as e:
@@ -808,7 +997,9 @@ async def suite_qualite(admin: MCPClient, url: str, do_cleanup: bool):
     section("Qualité — Backup")
     backup_id = ""
     try:
-        r = await admin.call_tool("backup_create", {"space_id": QUALITE_SPACE, "description": "test"})
+        r = await admin.call_tool(
+            "backup_create", {"space_id": QUALITE_SPACE, "description": "test"}
+        )
         if r.get("status") in ("ok", "created"):
             backup_id = r.get("backup_id", "")
             test_pass("backup_create", backup_id)
@@ -819,24 +1010,39 @@ async def suite_qualite(admin: MCPClient, url: str, do_cleanup: bool):
 
     try:
         r = await admin.call_tool("backup_list", {"space_id": QUALITE_SPACE})
-        test_pass("backup_list", f"{len(r.get('backups',[]))} backups") if r.get("status") == "ok" else test_fail("backup_list", str(r))
+        test_pass("backup_list", f"{len(r.get('backups', []))} backups") if r.get(
+            "status"
+        ) == "ok" else test_fail("backup_list", str(r))
     except Exception as e:
         test_fail("backup_list", str(e))
 
     if backup_id:
         try:
-            r = await admin.call_tool("backup_delete", {"backup_id": backup_id, "confirm": True})
-            test_pass("backup_delete", "OK") if r.get("status") in ("ok", "deleted") else test_fail("backup_delete", str(r))
+            r = await admin.call_tool(
+                "backup_delete", {"backup_id": backup_id, "confirm": True}
+            )
+            test_pass("backup_delete", "OK") if r.get("status") in (
+                "ok",
+                "deleted",
+            ) else test_fail("backup_delete", str(r))
         except Exception as e:
             test_fail("backup_delete", str(e))
 
     # GC
     section("Qualité — GC")
     try:
-        r = await admin.call_tool("admin_gc_notes", {
-            "space_id": QUALITE_SPACE, "max_age_days": 30, "confirm": False,
-        })
-        test_pass("admin_gc_notes", "dry-run OK") if r.get("status") in ("ok", "dry_run") else test_fail("admin_gc_notes", str(r))
+        r = await admin.call_tool(
+            "admin_gc_notes",
+            {
+                "space_id": QUALITE_SPACE,
+                "max_age_days": 30,
+                "confirm": False,
+            },
+        )
+        test_pass("admin_gc_notes", "dry-run OK") if r.get("status") in (
+            "ok",
+            "dry_run",
+        ) else test_fail("admin_gc_notes", str(r))
     except Exception as e:
         test_fail("admin_gc_notes", str(e))
 
@@ -844,7 +1050,9 @@ async def suite_qualite(admin: MCPClient, url: str, do_cleanup: bool):
     if do_cleanup:
         section("Qualité — Cleanup")
         try:
-            await admin.call_tool("space_delete", {"space_id": QUALITE_SPACE, "confirm": True})
+            await admin.call_tool(
+                "space_delete", {"space_id": QUALITE_SPACE, "confirm": True}
+            )
             test_pass("cleanup qualité", "OK")
         except Exception:
             pass
@@ -852,7 +1060,9 @@ async def suite_qualite(admin: MCPClient, url: str, do_cleanup: bool):
             r = await admin.call_tool("admin_list_tokens", {})
             for t in r.get("tokens", []):
                 if t.get("name") == QUALITE_TOKEN and not t.get("revoked"):
-                    await admin.call_tool("admin_revoke_token", {"token_hash": t["hash"]})
+                    await admin.call_tool(
+                        "admin_revoke_token", {"token_hash": t["hash"]}
+                    )
         except Exception:
             pass
 
@@ -875,14 +1085,22 @@ Avancement.
 """
 
 GRAPH_NOTES = [
-    ("observation", "Architecture micro-services : API Gateway (Kong), Auth (Keycloak), Data (PostgreSQL)."),
+    (
+        "observation",
+        "Architecture micro-services : API Gateway (Kong), Auth (Keycloak), Data (PostgreSQL).",
+    ),
     ("decision", "HAProxy retenu comme load balancer L4/L7 pour les 3 backends."),
     ("progress", "Phase 1 terminée : 12 endpoints REST validés, JWT flow OK."),
 ]
 
 
-async def suite_graph(admin: MCPClient, url: str, do_cleanup: bool,
-                      graph_url: str = "", graph_token: str = ""):
+async def suite_graph(
+    admin: MCPClient,
+    url: str,
+    do_cleanup: bool,
+    graph_url: str = "",
+    graph_token: str = "",
+):
     """Suite GRAPH : test du pont Live Memory → Graph Memory."""
     header("🌉 SUITE : GRAPH — Pont vers Graph Memory")
 
@@ -895,34 +1113,54 @@ async def suite_graph(admin: MCPClient, url: str, do_cleanup: bool,
     # Setup : token + space + notes + consolidation
     section("Graph 1/6 — Setup (token + space + notes + consolidation)")
     try:
-        r = await admin.call_tool("admin_create_token", {
-            "name": GRAPH_TOKEN_NAME, "permissions": "read,write",
-            "space_ids": GRAPH_SPACE, "expires_in_days": 1,
-        })
+        r = await admin.call_tool(
+            "admin_create_token",
+            {
+                "name": GRAPH_TOKEN_NAME,
+                "permissions": "read,write",
+                "space_ids": GRAPH_SPACE,
+                "expires_in_days": 1,
+            },
+        )
         if r.get("status") == "created":
             agent_token = r["token"]
             test_pass("token graph", GRAPH_TOKEN_NAME)
         else:
-            test_fail("token graph", r.get("message", "")); return
+            test_fail("token graph", r.get("message", ""))
+            return
     except Exception as e:
-        test_fail("token graph", str(e)); return
+        test_fail("token graph", str(e))
+        return
 
     agent = MCPClient(base_url=url, token=agent_token, timeout=600, call_delay=1.0)
 
     try:
-        r = await agent.call_tool("space_create", {
-            "space_id": GRAPH_SPACE, "description": "Test Graph Bridge",
-            "rules": GRAPH_RULES,
-        })
-        test_pass("space graph", GRAPH_SPACE) if r.get("status") in ("created", "already_exists") else test_fail("space graph", str(r))
+        r = await agent.call_tool(
+            "space_create",
+            {
+                "space_id": GRAPH_SPACE,
+                "description": "Test Graph Bridge",
+                "rules": GRAPH_RULES,
+            },
+        )
+        test_pass("space graph", GRAPH_SPACE) if r.get("status") in (
+            "created",
+            "already_exists",
+        ) else test_fail("space graph", str(r))
     except Exception as e:
-        test_fail("space graph", str(e)); return
+        test_fail("space graph", str(e))
+        return
 
     for cat, content in GRAPH_NOTES:
         try:
-            await agent.call_tool("live_note", {
-                "space_id": GRAPH_SPACE, "category": cat, "content": content,
-            })
+            await agent.call_tool(
+                "live_note",
+                {
+                    "space_id": GRAPH_SPACE,
+                    "category": cat,
+                    "content": content,
+                },
+            )
         except Exception:
             pass
 
@@ -940,16 +1178,23 @@ async def suite_graph(admin: MCPClient, url: str, do_cleanup: bool,
     # Connect
     section("Graph 2/6 — graph_connect")
     try:
-        r = await agent.call_tool("graph_connect", {
-            "space_id": GRAPH_SPACE, "url": graph_url,
-            "token": graph_token, "memory_id": GRAPH_MEMORY_ID,
-        })
+        r = await agent.call_tool(
+            "graph_connect",
+            {
+                "space_id": GRAPH_SPACE,
+                "url": graph_url,
+                "token": graph_token,
+                "memory_id": GRAPH_MEMORY_ID,
+            },
+        )
         if r.get("status") == "connected":
             test_pass("graph_connect", f"memory={GRAPH_MEMORY_ID}")
         else:
-            test_fail("graph_connect", r.get("message", str(r))); return
+            test_fail("graph_connect", r.get("message", str(r)))
+            return
     except Exception as e:
-        test_fail("graph_connect", str(e)); return
+        test_fail("graph_connect", str(e))
+        return
 
     # Push
     section("Graph 3/6 — graph_push")
@@ -970,7 +1215,10 @@ async def suite_graph(admin: MCPClient, url: str, do_cleanup: bool,
         r = await agent.call_tool("graph_status", {"space_id": GRAPH_SPACE})
         if r.get("status") == "ok" and r.get("reachable"):
             stats = r.get("graph_stats", {})
-            test_pass("graph_status", f"entities={stats.get('entity_count', '?')}, relations={stats.get('relation_count', '?')}")
+            test_pass(
+                "graph_status",
+                f"entities={stats.get('entity_count', '?')}, relations={stats.get('relation_count', '?')}",
+            )
         else:
             test_fail("graph_status", r.get("message", str(r)))
     except Exception as e:
@@ -991,7 +1239,9 @@ async def suite_graph(admin: MCPClient, url: str, do_cleanup: bool,
     if do_cleanup:
         section("Graph 6/6 — Cleanup")
         try:
-            await admin.call_tool("space_delete", {"space_id": GRAPH_SPACE, "confirm": True})
+            await admin.call_tool(
+                "space_delete", {"space_id": GRAPH_SPACE, "confirm": True}
+            )
             test_pass("cleanup graph", "OK")
         except Exception:
             pass
@@ -999,7 +1249,9 @@ async def suite_graph(admin: MCPClient, url: str, do_cleanup: bool,
             r = await admin.call_tool("admin_list_tokens", {})
             for t in r.get("tokens", []):
                 if t.get("name") == GRAPH_TOKEN_NAME and not t.get("revoked"):
-                    await admin.call_tool("admin_revoke_token", {"token_hash": t["hash"]})
+                    await admin.call_tool(
+                        "admin_revoke_token", {"token_hash": t["hash"]}
+                    )
         except Exception:
             pass
 
@@ -1009,10 +1261,16 @@ async def suite_graph(admin: MCPClient, url: str, do_cleanup: bool,
 # ═══════════════════════════════════════════════════════════════
 
 SUITES = {
-    "recette": ("🧪 Pipeline agent complet (notes → consolidation → bank)", suite_recette),
+    "recette": (
+        "🧪 Pipeline agent complet (notes → consolidation → bank)",
+        suite_recette,
+    ),
     "isolation": ("🔒 Tests d'isolation multi-tenant v0.7.1", suite_isolation),
     "qualite": ("🧪 Tests de qualité des outils MCP", suite_qualite),
-    "graph": ("🌉 Pont vers Graph Memory (nécessite --graph-url et --graph-token)", suite_graph),
+    "graph": (
+        "🌉 Pont vers Graph Memory (nécessite --graph-url et --graph-token)",
+        suite_graph,
+    ),
 }
 
 
@@ -1020,12 +1278,21 @@ SUITES = {
 # Orchestrateur
 # ═══════════════════════════════════════════════════════════════
 
-async def run_all(url: str, bootstrap_key: str, suites_to_run: list, do_cleanup: bool,
-                  graph_url: str = "", graph_token: str = ""):
-    admin = MCPClient(base_url=url, token=bootstrap_key, timeout=600, call_delay=CALL_DELAY)
+
+async def run_all(
+    url: str,
+    bootstrap_key: str,
+    suites_to_run: list,
+    do_cleanup: bool,
+    graph_url: str = "",
+    graph_token: str = "",
+):
+    admin = MCPClient(
+        base_url=url, token=bootstrap_key, timeout=600, call_delay=CALL_DELAY
+    )
     t0 = time.monotonic()
 
-    header(f"🏗️  RECETTE GLOBALE — Live Memory v1.2.0")
+    header("🏗️  RECETTE GLOBALE — Live Memory v1.2.0")
     print(f"  {C}Serveur :{Z} {url}")
     print(f"  {C}Suites  :{Z} {', '.join(suites_to_run)}")
 
@@ -1036,7 +1303,9 @@ async def run_all(url: str, bootstrap_key: str, suites_to_run: list, do_cleanup:
             continue
         desc, func = SUITES[name]
         if name == "graph":
-            await func(admin, url, do_cleanup, graph_url=graph_url, graph_token=graph_token)
+            await func(
+                admin, url, do_cleanup, graph_url=graph_url, graph_token=graph_token
+            )
         else:
             await func(admin, url, do_cleanup)
 
@@ -1069,6 +1338,7 @@ async def run_all(url: str, bootstrap_key: str, suites_to_run: list, do_cleanup:
 # Point d'entrée
 # ═══════════════════════════════════════════════════════════════
 
+
 def _read_key():
     p = os.path.join(os.path.dirname(__file__), "..", ".env")
     if os.path.exists(p):
@@ -1091,26 +1361,42 @@ Exemples :
   python scripts/test_recette.py --suite recette,qualite   # Plusieurs suites
   python scripts/test_recette.py --list                    # Lister les suites
   python scripts/test_recette.py --suite isolation -v --step
-""")
-    ap.add_argument("--url", default=os.environ.get("MCP_URL", "http://localhost:8080"),
-                    help="URL du serveur Live Memory (défaut: $MCP_URL ou localhost:8080)")
-    ap.add_argument("--token", default=os.environ.get("ADMIN_BOOTSTRAP_KEY", ""),
-                    help="Bootstrap key admin (défaut: $ADMIN_BOOTSTRAP_KEY ou .env)")
-    ap.add_argument("--suite", default="",
-                    help=f"Suites à exécuter, séparées par virgules (défaut: toutes). "
-                         f"Disponibles: {', '.join(SUITES.keys())}")
-    ap.add_argument("--list", action="store_true",
-                    help="Lister les suites disponibles et quitter")
-    ap.add_argument("--no-cleanup", action="store_true",
-                    help="Conserver les données de test")
-    ap.add_argument("--step", action="store_true",
-                    help="Mode pas-à-pas")
-    ap.add_argument("-v", "--verbose", action="store_true",
-                    help="Affichage détaillé")
-    ap.add_argument("--graph-url", default=os.environ.get("GRAPH_MEM_URL", ""),
-                    help="URL de Graph Memory (pour --suite graph)")
-    ap.add_argument("--graph-token", default=os.environ.get("GRAPH_MEM_TOKEN", ""),
-                    help="Token Graph Memory (pour --suite graph)")
+""",
+    )
+    ap.add_argument(
+        "--url",
+        default=os.environ.get("MCP_URL", "http://localhost:8080"),
+        help="URL du serveur Live Memory (défaut: $MCP_URL ou localhost:8080)",
+    )
+    ap.add_argument(
+        "--token",
+        default=os.environ.get("ADMIN_BOOTSTRAP_KEY", ""),
+        help="Bootstrap key admin (défaut: $ADMIN_BOOTSTRAP_KEY ou .env)",
+    )
+    ap.add_argument(
+        "--suite",
+        default="",
+        help=f"Suites à exécuter, séparées par virgules (défaut: toutes). "
+        f"Disponibles: {', '.join(SUITES.keys())}",
+    )
+    ap.add_argument(
+        "--list", action="store_true", help="Lister les suites disponibles et quitter"
+    )
+    ap.add_argument(
+        "--no-cleanup", action="store_true", help="Conserver les données de test"
+    )
+    ap.add_argument("--step", action="store_true", help="Mode pas-à-pas")
+    ap.add_argument("-v", "--verbose", action="store_true", help="Affichage détaillé")
+    ap.add_argument(
+        "--graph-url",
+        default=os.environ.get("GRAPH_MEM_URL", ""),
+        help="URL de Graph Memory (pour --suite graph)",
+    )
+    ap.add_argument(
+        "--graph-token",
+        default=os.environ.get("GRAPH_MEM_TOKEN", ""),
+        help="Token Graph Memory (pour --suite graph)",
+    )
     a = ap.parse_args()
 
     # --list : afficher les suites et quitter
@@ -1118,7 +1404,9 @@ Exemples :
         print(f"\n{B}Suites disponibles :{Z}\n")
         for name, (desc, _) in SUITES.items():
             print(f"  {C}{name:12s}{Z}  {desc}")
-        print(f"\n  Utilisation : python scripts/test_recette.py --suite {','.join(SUITES.keys())}")
+        print(
+            f"\n  Utilisation : python scripts/test_recette.py --suite {','.join(SUITES.keys())}"
+        )
         sys.exit(0)
 
     VERBOSE = a.verbose
@@ -1127,7 +1415,7 @@ Exemples :
     if not a.token:
         a.token = _read_key()
     if not a.token:
-        print(f"\033[91m❌ ADMIN_BOOTSTRAP_KEY requis (--token ou .env)\033[0m")
+        print("\033[91m❌ ADMIN_BOOTSTRAP_KEY requis (--token ou .env)\033[0m")
         sys.exit(1)
 
     # Déterminer les suites à exécuter
@@ -1136,10 +1424,16 @@ Exemples :
     else:
         suites = list(SUITES.keys())
 
-    errors = asyncio.run(run_all(
-        a.url, a.token, suites, not a.no_cleanup,
-        graph_url=a.graph_url, graph_token=a.graph_token,
-    ))
+    errors = asyncio.run(
+        run_all(
+            a.url,
+            a.token,
+            suites,
+            not a.no_cleanup,
+            graph_url=a.graph_url,
+            graph_token=a.graph_token,
+        )
+    )
     sys.exit(1 if errors else 0)
 
 

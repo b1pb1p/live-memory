@@ -14,7 +14,6 @@ Usage :
 
 import logging
 from functools import lru_cache
-from typing import Optional
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings
@@ -54,8 +53,10 @@ class Settings(BaseSettings):
     llmaas_api_url: str = ""
     llmaas_api_key: str = ""
     llmaas_model: str = "qwen3.5:27b"
-    llmaas_context_window: int = 131072     # Taille totale du context window du modèle (input + output)
-    llmaas_max_tokens: int = 16384          # Max tokens de SORTIE demandés à l'API
+    llmaas_context_window: int = (
+        131072  # Taille totale du context window du modèle (input + output)
+    )
+    llmaas_max_tokens: int = 16384  # Max tokens de SORTIE demandés à l'API
     llmaas_temperature: float = 0.3
 
     # ─── Rules par défaut ─────────────────────────────────────
@@ -66,19 +67,25 @@ class Settings(BaseSettings):
     default_rules_file: str = ""
 
     # ─── Consolidation ────────────────────────────────────────
-    consolidation_timeout: int = 600        # Timeout par appel LLM (secondes)
-    consolidation_max_notes: int = 500      # Max notes traitées par consolidation
-    consolidation_batch_size: int = 5       # Notes par lot LLM (réponses courtes = moins de drift)
+    consolidation_timeout: int = 600  # Timeout par appel LLM (secondes)
+    consolidation_max_notes: int = 500  # Max notes traitées par consolidation
+    consolidation_batch_size: int = (
+        5  # Notes par lot LLM (réponses courtes = moins de drift)
+    )
 
     # ─── Bank Compaction ──────────────────────────────────────
     # Compaction automatique des fichiers bank avant consolidation
     # quand le contexte total est trop gros pour le LLM.
     # Voir DESIGN/live-mem/CONTEXT_COMPACTION.md pour les détails.
-    compact_threshold: float = 0.6          # Ratio input/max_tokens au-delà duquel on compacte (0.6 = 60%)
-    bank_file_max_size: int = 15360         # Taille max universelle pour tout fichier bank (bytes)
+    compact_threshold: float = (
+        0.6  # Ratio input/max_tokens au-delà duquel on compacte (0.6 = 60%)
+    )
+    bank_file_max_size: int = (
+        15360  # Taille max universelle pour tout fichier bank (bytes)
+    )
 
     # ─── Response limits ──────────────────────────────────────
-    response_max_bytes: int = 512 * 1024    # Max response body size (512 KB)
+    response_max_bytes: int = 512 * 1024  # Max response body size (512 KB)
 
     # extra="ignore" permet d'avoir des variables dans .env (SITE_ADDRESS, WAF_PORT)
     # qui ne sont pas déclarées dans Settings (utilisées par Docker/Caddy uniquement)
@@ -96,7 +103,11 @@ class Settings(BaseSettings):
             )
 
         # S3: all-or-nothing (all three must be set, or none)
-        s3_fields = [self.s3_endpoint_url, self.s3_access_key_id, self.s3_secret_access_key]
+        s3_fields = [
+            self.s3_endpoint_url,
+            self.s3_access_key_id,
+            self.s3_secret_access_key,
+        ]
         s3_set = [bool(f) for f in s3_fields]
         if any(s3_set) and not all(s3_set):
             errors.append(
@@ -105,7 +116,9 @@ class Settings(BaseSettings):
             )
 
         # S3 endpoint URL format
-        if self.s3_endpoint_url and not self.s3_endpoint_url.startswith(("http://", "https://")):
+        if self.s3_endpoint_url and not self.s3_endpoint_url.startswith(
+            ("http://", "https://")
+        ):
             errors.append(
                 f"S3_ENDPOINT_URL must start with http:// or https://, "
                 f"got '{self.s3_endpoint_url[:50]}'"
@@ -114,6 +127,7 @@ class Settings(BaseSettings):
         # Bucket name: S3 naming rules (3-63 chars, lowercase, no underscore)
         if self.s3_bucket_name:
             import re
+
             if not re.match(r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$", self.s3_bucket_name):
                 _logger.warning(
                     "S3_BUCKET_NAME='%s' may not be a valid S3 bucket name",

@@ -3,9 +3,7 @@
 Unit tests for startup configuration validation.
 """
 
-import os
 import pytest
-from unittest.mock import patch
 
 from live_mem.config import Settings
 
@@ -44,7 +42,6 @@ def _make_settings(**overrides):
 
 
 class TestPortValidation:
-
     def test_valid_port(self):
         s = _make_settings(mcp_server_port=8080)
         assert s.mcp_server_port == 8080
@@ -59,7 +56,6 @@ class TestPortValidation:
 
 
 class TestS3Validation:
-
     def test_all_s3_fields_set(self):
         s = _make_settings(
             s3_endpoint_url="http://minio:9000",
@@ -95,7 +91,6 @@ class TestS3Validation:
 
 
 class TestLLMValidation:
-
     def test_both_llm_fields_set(self):
         s = _make_settings(
             llmaas_api_url="https://api.example.com/v1",
@@ -116,7 +111,6 @@ class TestLLMValidation:
 
 
 class TestConsolidationValidation:
-
     def test_timeout_too_low(self):
         with pytest.raises(ValueError, match="CONSOLIDATION_TIMEOUT"):
             _make_settings(consolidation_timeout=5)
@@ -131,7 +125,6 @@ class TestConsolidationValidation:
 
 
 class TestTemperatureValidation:
-
     def test_temperature_out_of_range(self):
         with pytest.raises(ValueError, match="LLMAAS_TEMPERATURE"):
             _make_settings(llmaas_temperature=3.0)
@@ -146,7 +139,6 @@ class TestTemperatureValidation:
 
 
 class TestResponseLimitValidation:
-
     def test_response_limit_too_low(self):
         with pytest.raises(ValueError, match="RESPONSE_MAX_BYTES"):
             _make_settings(response_max_bytes=100)

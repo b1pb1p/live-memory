@@ -22,7 +22,6 @@ Usage :
 """
 
 import sys
-import time
 import logging
 from pathlib import Path
 
@@ -34,11 +33,13 @@ from .config import get_settings
 # Configuration du logging (stderr uniquement, JSON structuré)
 # ─────────────────────────────────────────────────────────────
 
+
 class _JsonFormatter(logging.Formatter):
     """Structured JSON log formatter for production log aggregation."""
 
     def format(self, record: logging.LogRecord) -> str:
         import json as _json
+
         entry = {
             "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
             "level": record.levelname,
@@ -83,7 +84,7 @@ mcp = FastMCP(
 # Chaque module tools/xxx.py expose une fonction register(mcp) -> int
 # qui déclare ses outils via @mcp.tool() et retourne le nombre d'outils.
 
-from .tools import register_all_tools
+from .tools import register_all_tools  # noqa: E402
 
 tools_count = register_all_tools(mcp)
 
@@ -91,6 +92,7 @@ tools_count = register_all_tools(mcp)
 # =============================================================================
 # Assemblage ASGI — Chaîne de middlewares
 # =============================================================================
+
 
 def create_app():
     """
@@ -105,7 +107,7 @@ def create_app():
     L'AuthMiddleware extrait le Bearer token et l'injecte dans les contextvars.
     L'AuditMiddleware émet des entrées d'audit JSON structurées.
     Le LoggingMiddleware trace les requêtes HTTP en JSON sur stderr.
-    Le ResponseLimitMiddleware tronque les réponses > 512 KB.
+    Le ResponseLimitMiddleware tronque les réponses > 512 KB (MCP exclu).
     Le StaticFilesMiddleware sert /live, /static/*, /api/* (interface web).
     """
     from .auth.middleware import (
@@ -142,6 +144,7 @@ def create_app():
 # Helpers internes
 # =============================================================================
 
+
 def _read_version() -> str:
     """Lit la version depuis le fichier VERSION à la racine du projet."""
     version_file = Path(__file__).parent.parent.parent / "VERSION"
@@ -153,6 +156,7 @@ def _read_version() -> str:
 # =============================================================================
 # Point d'entrée
 # =============================================================================
+
 
 def main():
     """Démarre le serveur MCP Live Memory."""
@@ -166,7 +170,9 @@ def main():
         logger.critical(
             "⛔ ADMIN_BOOTSTRAP_KEY non configurée ou trop faible ('%s') ! "
             "Définissez une clé de ≥32 caractères aléatoires dans .env.",
-            settings.admin_bootstrap_key[:10] + "..." if len(settings.admin_bootstrap_key) > 10 else settings.admin_bootstrap_key,
+            settings.admin_bootstrap_key[:10] + "..."
+            if len(settings.admin_bootstrap_key) > 10
+            else settings.admin_bootstrap_key,
         )
         sys.exit(1)
     if len(settings.admin_bootstrap_key) < 32:
@@ -181,12 +187,12 @@ def main():
 
     categories = {
         "System": [n for n in tool_names if n.startswith("system_")],
-        "Space":  [n for n in tool_names if n.startswith("space_")],
-        "Live":   [n for n in tool_names if n.startswith("live_")],
-        "Bank":   [n for n in tool_names if n.startswith("bank_")],
-        "Graph":  [n for n in tool_names if n.startswith("graph_")],
+        "Space": [n for n in tool_names if n.startswith("space_")],
+        "Live": [n for n in tool_names if n.startswith("live_")],
+        "Bank": [n for n in tool_names if n.startswith("bank_")],
+        "Graph": [n for n in tool_names if n.startswith("graph_")],
         "Backup": [n for n in tool_names if n.startswith("backup_")],
-        "Admin":  [n for n in tool_names if n.startswith("admin_")],
+        "Admin": [n for n in tool_names if n.startswith("admin_")],
     }
 
     # Construire les lignes de contenu de la bannière
@@ -209,6 +215,7 @@ def main():
     def _display_len(s: str) -> int:
         """Longueur d'affichage (emoji/wide chars = 2 colonnes)."""
         import unicodedata
+
         length = 0
         for ch in s:
             eaw = unicodedata.east_asian_width(ch)

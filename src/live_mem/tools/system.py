@@ -13,9 +13,8 @@ Outils authentifiés :
 import time
 import platform
 from pathlib import Path
-from typing import Optional
 
-from mcp.server.fastmcp import FastMCP, Context
+from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
 
@@ -42,12 +41,14 @@ def register(mcp: FastMCP) -> int:
             État global du système et détails par service
         """
         from ..config import get_settings
+
         settings = get_settings()
         results = {}
 
         # ── Test S3 ──────────────────────────────────────────
         try:
             from ..core.storage import get_storage
+
             storage = get_storage()
             results["s3"] = await storage.test_connection()
         except Exception as e:
@@ -57,6 +58,7 @@ def register(mcp: FastMCP) -> int:
         try:
             if settings.llmaas_api_url and settings.llmaas_api_key:
                 from openai import AsyncOpenAI
+
                 t0 = time.monotonic()
                 client = AsyncOpenAI(
                     base_url=settings.llmaas_api_url,
@@ -86,18 +88,17 @@ def register(mcp: FastMCP) -> int:
         spaces_count = -1
         try:
             from ..core.storage import get_storage
+
             storage = get_storage()
             prefixes = await storage.list_prefixes("")
             # Exclure les préfixes système (_system/, _backups/)
-            spaces_count = len([p for p in prefixes if not p.startswith('_')])
+            spaces_count = len([p for p in prefixes if not p.startswith("_")])
         except Exception:
             pass
 
         # ── Statut global ────────────────────────────────────
         service_statuses = [
-            r.get("status", "error")
-            for r in results.values()
-            if isinstance(r, dict)
+            r.get("status", "error") for r in results.values() if isinstance(r, dict)
         ]
         all_ok = all(s == "ok" for s in service_statuses)
 
@@ -122,15 +123,18 @@ def register(mcp: FastMCP) -> int:
             Métadonnées du service
         """
         from ..config import get_settings
+
         settings = get_settings()
 
         # Lister les outils MCP disponibles
         tools = []
         for tool in mcp._tool_manager.list_tools():
-            tools.append({
-                "name": tool.name,
-                "description": (tool.description or "")[:100],
-            })
+            tools.append(
+                {
+                    "name": tool.name,
+                    "description": (tool.description or "")[:100],
+                }
+            )
 
         return {
             "status": "ok",
@@ -178,6 +182,7 @@ def register(mcp: FastMCP) -> int:
         if token_hash and token_info.get("type") == "token":
             try:
                 from ..core.tokens import get_token_service
+
                 store_data = await get_token_service().list_tokens()
                 for t in store_data.get("tokens", []):
                     if t.get("hash") == token_hash:

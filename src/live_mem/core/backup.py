@@ -50,7 +50,10 @@ class BackupService:
 
         # Vérifier l'existence de l'espace
         if not await storage.exists(f"{space_id}/_meta.json"):
-            return {"status": "not_found", "message": f"Espace '{space_id}' introuvable"}
+            return {
+                "status": "not_found",
+                "message": f"Espace '{space_id}' introuvable",
+            }
 
         # Générer le timestamp pour le backup
         now = datetime.now(timezone.utc)
@@ -65,7 +68,7 @@ class BackupService:
         for obj in objects:
             source_key = obj["Key"]
             # Chemin relatif dans l'espace
-            relative = source_key[len(space_id) + 1:]
+            relative = source_key[len(space_id) + 1 :]
             dest_key = backup_prefix + relative
 
             await storage.copy_object(source_key, dest_key)
@@ -129,27 +132,33 @@ class BackupService:
                 result = await self.create(sid, description)
                 if result.get("status") == "created":
                     spaces_ok += 1
-                    details.append({
-                        "space_id": sid,
-                        "status": "created",
-                        "backup_id": result.get("backup_id", ""),
-                        "files": result.get("files_backed_up", 0),
-                        "size": result.get("total_size", 0),
-                    })
+                    details.append(
+                        {
+                            "space_id": sid,
+                            "status": "created",
+                            "backup_id": result.get("backup_id", ""),
+                            "files": result.get("files_backed_up", 0),
+                            "size": result.get("total_size", 0),
+                        }
+                    )
                 else:
                     spaces_failed += 1
-                    details.append({
-                        "space_id": sid,
-                        "status": "error",
-                        "message": result.get("message", "?"),
-                    })
+                    details.append(
+                        {
+                            "space_id": sid,
+                            "status": "error",
+                            "message": result.get("message", "?"),
+                        }
+                    )
             except Exception as e:
                 spaces_failed += 1
-                details.append({
-                    "space_id": sid,
-                    "status": "error",
-                    "message": str(e),
-                })
+                details.append(
+                    {
+                        "space_id": sid,
+                        "status": "error",
+                        "message": str(e),
+                    }
+                )
 
         return {
             "status": "ok",
@@ -180,11 +189,13 @@ class BackupService:
             for p in prefixes:
                 parts = p.rstrip("/").split("/")
                 ts = parts[-1] if len(parts) >= 3 else "?"
-                backups.append({
-                    "backup_id": f"{space_id}/{ts}",
-                    "space_id": space_id,
-                    "timestamp": ts,
-                })
+                backups.append(
+                    {
+                        "backup_id": f"{space_id}/{ts}",
+                        "space_id": space_id,
+                        "timestamp": ts,
+                    }
+                )
         else:
             # Lister les espaces qui ont des backups
             space_prefixes = await storage.list_prefixes("_backups/", delimiter="/")
@@ -193,11 +204,13 @@ class BackupService:
                 ts_prefixes = await storage.list_prefixes(sp, delimiter="/")
                 for tp in ts_prefixes:
                     ts = tp.rstrip("/").split("/")[-1]
-                    backups.append({
-                        "backup_id": f"{sid}/{ts}",
-                        "space_id": sid,
-                        "timestamp": ts,
-                    })
+                    backups.append(
+                        {
+                            "backup_id": f"{sid}/{ts}",
+                            "space_id": sid,
+                            "timestamp": ts,
+                        }
+                    )
 
         return {"status": "ok", "backups": backups, "total": len(backups)}
 
@@ -218,7 +231,10 @@ class BackupService:
         # Parser le backup_id
         parts = backup_id.split("/", 1)
         if len(parts) != 2:
-            return {"status": "error", "message": "backup_id invalide (format: space_id/timestamp)"}
+            return {
+                "status": "error",
+                "message": "backup_id invalide (format: space_id/timestamp)",
+            }
 
         space_id, timestamp = parts
         backup_prefix = f"_backups/{space_id}/{timestamp}/"
@@ -226,7 +242,10 @@ class BackupService:
         # Vérifier que le backup existe
         backup_objects = await storage.list_objects(backup_prefix)
         if not backup_objects:
-            return {"status": "not_found", "message": f"Backup '{backup_id}' introuvable"}
+            return {
+                "status": "not_found",
+                "message": f"Backup '{backup_id}' introuvable",
+            }
 
         # Vérifier que l'espace N'existe PAS
         if await storage.exists(f"{space_id}/_meta.json"):
@@ -238,7 +257,7 @@ class BackupService:
         # Copier tous les fichiers du backup vers l'espace
         for obj in backup_objects:
             source_key = obj["Key"]
-            relative = source_key[len(backup_prefix):]
+            relative = source_key[len(backup_prefix) :]
             dest_key = f"{space_id}/{relative}"
             await storage.copy_object(source_key, dest_key)
 
@@ -270,13 +289,16 @@ class BackupService:
 
         all_objects = await storage.list_and_get(backup_prefix, exclude_keep=False)
         if not all_objects:
-            return {"status": "not_found", "message": f"Backup '{backup_id}' introuvable"}
+            return {
+                "status": "not_found",
+                "message": f"Backup '{backup_id}' introuvable",
+            }
 
         # Créer l'archive tar.gz
         buf = io.BytesIO()
         with tarfile.open(fileobj=buf, mode="w:gz") as tar:
             for obj in all_objects:
-                arcname = obj["key"][len(backup_prefix):]
+                arcname = obj["key"][len(backup_prefix) :]
                 data = obj["content"].encode("utf-8")
                 info = tarfile.TarInfo(name=arcname)
                 info.size = len(data)
@@ -313,7 +335,10 @@ class BackupService:
 
         objects = await storage.list_objects(backup_prefix)
         if not objects:
-            return {"status": "not_found", "message": f"Backup '{backup_id}' introuvable"}
+            return {
+                "status": "not_found",
+                "message": f"Backup '{backup_id}' introuvable",
+            }
 
         keys = [o["Key"] for o in objects]
         deleted = await storage.delete_many(keys)

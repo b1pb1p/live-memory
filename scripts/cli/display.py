@@ -19,6 +19,7 @@ console = Console()
 # Utilitaires communs
 # =============================================================================
 
+
 def show_error(msg: str):
     """Affiche un message d'erreur."""
     console.print(f"[red]❌ {msg}[/red]")
@@ -46,6 +47,7 @@ def show_json(data: dict):
 # =============================================================================
 # System
 # =============================================================================
+
 
 def show_health_result(result: dict):
     """Affiche le résultat du health check (HTTP /health ou MCP system_health)."""
@@ -131,25 +133,31 @@ def show_whoami_result(result: dict):
     if expires:
         lines.append(f"[bold]Expire   :[/bold] {expires[:19]}")
     elif result.get("auth_type") == "token":
-        lines.append(f"[bold]Expire   :[/bold] jamais")
+        lines.append("[bold]Expire   :[/bold] jamais")
     if result.get("note"):
         lines.append(f"\n[dim italic]{result['note']}[/dim italic]")
 
-    console.print(Panel.fit(
-        "\n".join(lines),
-        title="👤 Qui suis-je ?", border_style="cyan",
-    ))
+    console.print(
+        Panel.fit(
+            "\n".join(lines),
+            title="👤 Qui suis-je ?",
+            border_style="cyan",
+        )
+    )
 
 
 def show_about_result(result: dict):
     """Affiche le résultat de system_about."""
-    console.print(Panel.fit(
-        f"[bold]Service :[/bold] [cyan]{result.get('name', '?')}[/cyan]\n"
-        f"[bold]Version :[/bold] [green]{result.get('version', '?')}[/green]\n"
-        f"[bold]Python  :[/bold] {result.get('python_version', '?')}\n"
-        f"[bold]Outils  :[/bold] {result.get('tools_count', 0)}",
-        title="ℹ️  À propos", border_style="blue",
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold]Service :[/bold] [cyan]{result.get('name', '?')}[/cyan]\n"
+            f"[bold]Version :[/bold] [green]{result.get('version', '?')}[/green]\n"
+            f"[bold]Python  :[/bold] {result.get('python_version', '?')}\n"
+            f"[bold]Outils  :[/bold] {result.get('tools_count', 0)}",
+            title="ℹ️  À propos",
+            border_style="blue",
+        )
+    )
     tools = result.get("tools", [])
     if tools:
         # Grouper par catégorie (préfixe avant le _)
@@ -171,7 +179,11 @@ def show_about_result(result: dict):
                 first_line = ""
                 for line in desc.strip().split("\n"):
                     line = line.strip()
-                    if line and not line.startswith("Args:") and not line.startswith("Returns:"):
+                    if (
+                        line
+                        and not line.startswith("Args:")
+                        and not line.startswith("Returns:")
+                    ):
                         first_line = line[:55]
                         break
                 cat_label = f"[magenta]{cat}[/magenta]" if i == 0 else ""
@@ -184,15 +196,19 @@ def show_about_result(result: dict):
 # Space
 # =============================================================================
 
+
 def show_space_created(result: dict):
     """Affiche un espace créé."""
-    console.print(Panel.fit(
-        f"[bold]Space ID :[/bold] [cyan]{result.get('space_id', '?')}[/cyan]\n"
-        f"[bold]Description :[/bold] {result.get('description', '')}\n"
-        f"[bold]Rules :[/bold] {result.get('rules_size', 0)} octets\n"
-        f"[bold]Créé le :[/bold] {result.get('created_at', '')}",
-        title="✅ Espace créé", border_style="green",
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold]Space ID :[/bold] [cyan]{result.get('space_id', '?')}[/cyan]\n"
+            f"[bold]Description :[/bold] {result.get('description', '')}\n"
+            f"[bold]Rules :[/bold] {result.get('rules_size', 0)} octets\n"
+            f"[bold]Créé le :[/bold] {result.get('created_at', '')}",
+            title="✅ Espace créé",
+            border_style="green",
+        )
+    )
 
 
 def show_space_updated(result: dict):
@@ -204,7 +220,9 @@ def show_space_updated(result: dict):
     if "owner" in updated:
         panel_content += f"Owner → {result.get('owner', '')}\n"
     panel_content += f"Champs modifiés : {', '.join(updated)}"
-    console.print(Panel(panel_content, title="✏️ Espace mis à jour", border_style="green"))
+    console.print(
+        Panel(panel_content, title="✏️ Espace mis à jour", border_style="green")
+    )
 
 
 def show_rules_updated(result: dict):
@@ -213,7 +231,9 @@ def show_rules_updated(result: dict):
         f"[bold]{result.get('space_id', '?')}[/bold]\n"
         f"Taille : {result.get('rules_size', '?')} octets"
     )
-    console.print(Panel(panel_content, title="📜 Rules mises à jour", border_style="green"))
+    console.print(
+        Panel(panel_content, title="📜 Rules mises à jour", border_style="green")
+    )
 
 
 def show_space_list(result: dict):
@@ -227,9 +247,11 @@ def show_space_list(result: dict):
     table.add_column("Bank", justify="right")
     for s in spaces:
         table.add_row(
-            s.get("space_id", "?"), s.get("description", ""),
+            s.get("space_id", "?"),
+            s.get("description", ""),
             s.get("owner", ""),
-            str(s.get("live_notes_count", 0)), str(s.get("bank_files_count", 0)),
+            str(s.get("live_notes_count", 0)),
+            str(s.get("bank_files_count", 0)),
         )
     console.print(table)
 
@@ -238,22 +260,27 @@ def show_space_info(result: dict):
     """Affiche les infos détaillées d'un espace."""
     live = result.get("live", {})
     bank = result.get("bank", {})
-    console.print(Panel.fit(
-        f"[bold]Space ID :[/bold] [cyan]{result.get('space_id', '?')}[/cyan]\n"
-        f"[bold]Description :[/bold] {result.get('description', '')}\n"
-        f"[bold]Owner :[/bold] {result.get('owner', '') or '[dim]—[/dim]'}\n"
-        f"[bold]Notes live :[/bold] {live.get('notes_count', 0)} ({live.get('total_size', 0)} octets)\n"
-        f"[bold]Bank files :[/bold] {bank.get('files_count', 0)} ({bank.get('total_size', 0)} octets)\n"
-        f"[bold]Consolidations :[/bold] {result.get('consolidation_count', 0)}\n"
-        f"[bold]Dernière :[/bold] {result.get('last_consolidation', 'jamais')}",
-        title="📋 Espace", border_style="blue",
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold]Space ID :[/bold] [cyan]{result.get('space_id', '?')}[/cyan]\n"
+            f"[bold]Description :[/bold] {result.get('description', '')}\n"
+            f"[bold]Owner :[/bold] {result.get('owner', '') or '[dim]—[/dim]'}\n"
+            f"[bold]Notes live :[/bold] {live.get('notes_count', 0)} ({live.get('total_size', 0)} octets)\n"
+            f"[bold]Bank files :[/bold] {bank.get('files_count', 0)} ({bank.get('total_size', 0)} octets)\n"
+            f"[bold]Consolidations :[/bold] {result.get('consolidation_count', 0)}\n"
+            f"[bold]Dernière :[/bold] {result.get('last_consolidation', 'jamais')}",
+            title="📋 Espace",
+            border_style="blue",
+        )
+    )
 
 
 def show_rules(result: dict):
     """Affiche les rules d'un espace."""
     rules = result.get("rules", "")
-    console.print(Panel(Syntax(rules, "markdown"), title="📐 Rules", border_style="blue"))
+    console.print(
+        Panel(Syntax(rules, "markdown"), title="📐 Rules", border_style="blue")
+    )
 
 
 def show_notes(result: dict):
@@ -261,8 +288,13 @@ def show_notes(result: dict):
     notes = result.get("notes", [])
     # Couleurs par catégorie
     colors = {
-        "observation": "green", "decision": "yellow", "todo": "red",
-        "insight": "magenta", "question": "cyan", "progress": "blue", "issue": "red",
+        "observation": "green",
+        "decision": "yellow",
+        "todo": "red",
+        "insight": "magenta",
+        "question": "cyan",
+        "progress": "blue",
+        "issue": "red",
     }
     table = Table(title=f"📝 {result.get('total', 0)} notes", show_header=True)
     table.add_column("Agent", style="cyan")
@@ -273,8 +305,10 @@ def show_notes(result: dict):
         cat = n.get("category", "?")
         color = colors.get(cat, "white")
         table.add_row(
-            n.get("agent", "?"), f"[{color}]{cat}[/{color}]",
-            n.get("content", "")[:60], n.get("timestamp", "")[:19],
+            n.get("agent", "?"),
+            f"[{color}]{cat}[/{color}]",
+            n.get("content", "")[:60],
+            n.get("timestamp", "")[:19],
         )
     console.print(table)
 
@@ -283,10 +317,13 @@ def show_notes(result: dict):
 # Bank
 # =============================================================================
 
+
 def show_bank_list(result: dict):
     """Affiche la liste des fichiers bank."""
     files = result.get("files", [])
-    table = Table(title=f"📘 Bank — {result.get('file_count', 0)} fichiers", show_header=True)
+    table = Table(
+        title=f"📘 Bank — {result.get('file_count', 0)} fichiers", show_header=True
+    )
     table.add_column("Fichier", style="cyan bold")
     table.add_column("Taille", justify="right")
     for f in files:
@@ -296,11 +333,13 @@ def show_bank_list(result: dict):
 
 def show_bank_content(result: dict):
     """Affiche le contenu d'un fichier bank."""
-    console.print(Panel(
-        Syntax(result.get("content", ""), "markdown"),
-        title=f"📄 {result.get('filename', '?')}",
-        border_style="blue",
-    ))
+    console.print(
+        Panel(
+            Syntax(result.get("content", ""), "markdown"),
+            title=f"📄 {result.get('filename', '?')}",
+            border_style="blue",
+        )
+    )
 
 
 def show_bank_write_result(result: dict):
@@ -314,8 +353,12 @@ def show_bank_write_result(result: dict):
         f"[bold]Taille  :[/bold] {result.get('size', 0)} octets",
     ]
     if cleaned:
-        lines.append(f"[bold]Doublons Unicode nettoyés :[/bold] [yellow]{cleaned}[/yellow]")
-    console.print(Panel.fit("\n".join(lines), title="📝 Bank Write", border_style="green"))
+        lines.append(
+            f"[bold]Doublons Unicode nettoyés :[/bold] [yellow]{cleaned}[/yellow]"
+        )
+    console.print(
+        Panel.fit("\n".join(lines), title="📝 Bank Write", border_style="green")
+    )
 
 
 def show_bank_delete_result(result: dict):
@@ -328,23 +371,32 @@ def show_bank_delete_result(result: dict):
     ]
     if len(keys) > 1:
         lines.append(f"[bold]Variantes :[/bold] {', '.join(keys)}")
-    console.print(Panel.fit("\n".join(lines), title="🗑️ Bank Delete", border_style="red"))
+    console.print(
+        Panel.fit("\n".join(lines), title="🗑️ Bank Delete", border_style="red")
+    )
 
 
 def show_bank_repair_result(result: dict):
     """Affiche le résultat d'un bank_repair."""
     mode = result.get("mode", "?")
-    mode_label = "[yellow]DRY-RUN (aucune modification)[/yellow]" if mode == "dry-run" else "[green]APPLIQUÉ[/green]"
+    mode_label = (
+        "[yellow]DRY-RUN (aucune modification)[/yellow]"
+        if mode == "dry-run"
+        else "[green]APPLIQUÉ[/green]"
+    )
 
-    console.print(Panel.fit(
-        f"[bold]Espace  :[/bold] [cyan]{result.get('space_id', '?')}[/cyan]\n"
-        f"[bold]Mode    :[/bold] {mode_label}\n"
-        f"[bold]Scannés :[/bold] {result.get('files_scanned', 0)} fichiers uniques\n"
-        f"[bold]OK      :[/bold] {result.get('files_ok', 0)}\n"
-        f"[bold]À réparer :[/bold] {result.get('files_to_repair', 0)}\n"
-        f"[bold]Doublons  :[/bold] {result.get('duplicates_found', 0)}",
-        title="🔧 Bank Repair", border_style="yellow" if mode == "dry-run" else "green",
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold]Espace  :[/bold] [cyan]{result.get('space_id', '?')}[/cyan]\n"
+            f"[bold]Mode    :[/bold] {mode_label}\n"
+            f"[bold]Scannés :[/bold] {result.get('files_scanned', 0)} fichiers uniques\n"
+            f"[bold]OK      :[/bold] {result.get('files_ok', 0)}\n"
+            f"[bold]À réparer :[/bold] {result.get('files_to_repair', 0)}\n"
+            f"[bold]Doublons  :[/bold] {result.get('duplicates_found', 0)}",
+            title="🔧 Bank Repair",
+            border_style="yellow" if mode == "dry-run" else "green",
+        )
+    )
 
     repairs = result.get("repairs", [])
     if repairs:
@@ -355,7 +407,12 @@ def show_bank_repair_result(result: dict):
         table.add_column("Statut")
         for r in repairs:
             status_icon = "✅" if r.get("status") == "repaired" else "🔍"
-            table.add_row(r.get("original_relpath", "?"), "→", r.get("sanitized", "?"), status_icon)
+            table.add_row(
+                r.get("original_relpath", "?"),
+                "→",
+                r.get("sanitized", "?"),
+                status_icon,
+            )
         console.print(table)
 
     duplicates = result.get("duplicates", [])
@@ -375,21 +432,28 @@ def show_bank_repair_result(result: dict):
 
 def show_consolidation_result(result: dict):
     """Affiche le résultat d'une consolidation."""
-    console.print(Panel.fit(
-        f"[bold]Notes traitées :[/bold] {result.get('notes_processed', 0)}\n"
-        f"[bold]Fichiers créés :[/bold] {result.get('bank_files_created', 0)}\n"
-        f"[bold]Fichiers MAJ :[/bold] {result.get('bank_files_updated', 0)}\n"
-        f"[bold]Synthèse :[/bold] {result.get('synthesis_size', 0)} chars\n"
-        f"[bold]Tokens LLM :[/bold] {result.get('llm_tokens_used', 0)}\n"
-        f"[bold]Durée :[/bold] {result.get('duration_seconds', 0)}s",
-        title="🧠 Consolidation terminée", border_style="green",
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold]Notes traitées :[/bold] {result.get('notes_processed', 0)}\n"
+            f"[bold]Fichiers créés :[/bold] {result.get('bank_files_created', 0)}\n"
+            f"[bold]Fichiers MAJ :[/bold] {result.get('bank_files_updated', 0)}\n"
+            f"[bold]Synthèse :[/bold] {result.get('synthesis_size', 0)} chars\n"
+            f"[bold]Tokens LLM :[/bold] {result.get('llm_tokens_used', 0)}\n"
+            f"[bold]Durée :[/bold] {result.get('duration_seconds', 0)}s",
+            title="🧠 Consolidation terminée",
+            border_style="green",
+        )
+    )
 
 
 def show_bank_compact_result(result: dict):
     """Affiche le résultat d'un bank_compact."""
     dry_run = result.get("dry_run", True)
-    mode_label = "[yellow]DRY-RUN (aucune modification)[/yellow]" if dry_run else "[green]APPLIQUÉ[/green]"
+    mode_label = (
+        "[yellow]DRY-RUN (aucune modification)[/yellow]"
+        if dry_run
+        else "[green]APPLIQUÉ[/green]"
+    )
     files_over = result.get("files_over_limit", 0)
     border = "yellow" if dry_run else ("green" if files_over == 0 else "cyan")
 
@@ -400,15 +464,17 @@ def show_bank_compact_result(result: dict):
         pct = round((1 - size_after / size_before) * 100)
         reduction = f"\n[bold]Réduction :[/bold] [green]-{pct}%[/green] ({size_before} → {size_after} bytes)"
 
-    console.print(Panel.fit(
-        f"[bold]Espace     :[/bold] [cyan]{result.get('space_id', '?')}[/cyan]\n"
-        f"[bold]Mode       :[/bold] {mode_label}\n"
-        f"[bold]Fichiers   :[/bold] {result.get('files_total', 0)} total\n"
-        f"[bold]Surdimensionnés :[/bold] {files_over}\n"
-        f"[bold]Taille bank :[/bold] {size_before} bytes"
-        + reduction,
-        title="📦 Bank Compact", border_style=border,
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold]Espace     :[/bold] [cyan]{result.get('space_id', '?')}[/cyan]\n"
+            f"[bold]Mode       :[/bold] {mode_label}\n"
+            f"[bold]Fichiers   :[/bold] {result.get('files_total', 0)} total\n"
+            f"[bold]Surdimensionnés :[/bold] {files_over}\n"
+            f"[bold]Taille bank :[/bold] {size_before} bytes" + reduction,
+            title="📦 Bank Compact",
+            border_style=border,
+        )
+    )
 
     # Tableau des fichiers avec détails
     files = result.get("files", [])
@@ -457,24 +523,30 @@ def show_bank_compact_result(result: dict):
     if files_over == 0:
         show_success("Tous les fichiers bank sont sous leur limite de taille !")
     elif dry_run and files_over > 0:
-        show_warning(f"{files_over} fichier(s) surdimensionné(s). Lancez avec --apply pour compacter.")
+        show_warning(
+            f"{files_over} fichier(s) surdimensionné(s). Lancez avec --apply pour compacter."
+        )
 
 
 # =============================================================================
 # Admin tokens
 # =============================================================================
 
+
 def show_token_created(result: dict):
     """Affiche un token créé (avec avertissement)."""
-    console.print(Panel.fit(
-        f"[bold]Nom :[/bold] {result.get('name', '?')}\n"
-        f"[bold red]Token :[/bold red] [red]{result.get('token', '?')}[/red]\n"
-        f"[bold]Permissions :[/bold] {', '.join(result.get('permissions', []))}\n"
-        f"[bold]Espaces :[/bold] {', '.join(result.get('space_ids', [])) or 'tous'}\n"
-        f"[bold]Expire :[/bold] {result.get('expires_at', 'jamais')}\n\n"
-        f"[bold yellow]{result.get('warning', '')}[/bold yellow]",
-        title="🔑 Token créé", border_style="red",
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold]Nom :[/bold] {result.get('name', '?')}\n"
+            f"[bold red]Token :[/bold red] [red]{result.get('token', '?')}[/red]\n"
+            f"[bold]Permissions :[/bold] {', '.join(result.get('permissions', []))}\n"
+            f"[bold]Espaces :[/bold] {', '.join(result.get('space_ids', [])) or 'tous'}\n"
+            f"[bold]Expire :[/bold] {result.get('expires_at', 'jamais')}\n\n"
+            f"[bold yellow]{result.get('warning', '')}[/bold yellow]",
+            title="🔑 Token créé",
+            border_style="red",
+        )
+    )
 
 
 def show_token_list(result: dict):
@@ -509,12 +581,15 @@ def show_token_list(result: dict):
         )
     console.print(table)
     # Aide contextuelle
-    console.print("[dim]💡 Copiez le Hash pour : token revoke <hash> · token update <hash> --email user@example.com · token delete <hash>[/dim]")
+    console.print(
+        "[dim]💡 Copiez le Hash pour : token revoke <hash> · token update <hash> --email user@example.com · token delete <hash>[/dim]"
+    )
 
 
 # =============================================================================
 # Backup
 # =============================================================================
+
 
 def show_backup_created(result: dict):
     """Affiche un backup créé."""
@@ -532,12 +607,15 @@ def show_backup_all_result(result: dict):
     total = result.get("spaces_total", 0)
     border = "green" if failed == 0 else "yellow"
 
-    console.print(Panel.fit(
-        f"[bold]Espaces total  :[/bold] {total}\n"
-        f"[bold]Sauvegardés    :[/bold] [green]{ok}[/green]\n"
-        f"[bold]Échoués        :[/bold] {'[red]' + str(failed) + '[/red]' if failed else '0'}",
-        title="💾 Backup ALL", border_style=border,
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold]Espaces total  :[/bold] {total}\n"
+            f"[bold]Sauvegardés    :[/bold] [green]{ok}[/green]\n"
+            f"[bold]Échoués        :[/bold] {'[red]' + str(failed) + '[/red]' if failed else '0'}",
+            title="💾 Backup ALL",
+            border_style=border,
+        )
+    )
 
     details = result.get("details", [])
     if details:
@@ -572,29 +650,36 @@ def show_backup_all_result(result: dict):
 # Graph Bridge
 # =============================================================================
 
+
 def show_graph_connected(result: dict):
     """Affiche le résultat d'un graph_connect."""
     gm = result.get("graph_memory", {})
     created = "✨ créée" if gm.get("memory_created") else "existait déjà"
-    console.print(Panel.fit(
-        f"[bold]Space :[/bold] [cyan]{result.get('space_id', '?')}[/cyan]\n"
-        f"[bold]URL :[/bold] {gm.get('url', '?')}\n"
-        f"[bold]Memory ID :[/bold] [green]{gm.get('memory_id', '?')}[/green]\n"
-        f"[bold]Ontologie :[/bold] {gm.get('ontology', '?')}\n"
-        f"[bold]Mémoire :[/bold] {created}",
-        title="🌉 Connecté à Graph Memory", border_style="green",
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold]Space :[/bold] [cyan]{result.get('space_id', '?')}[/cyan]\n"
+            f"[bold]URL :[/bold] {gm.get('url', '?')}\n"
+            f"[bold]Memory ID :[/bold] [green]{gm.get('memory_id', '?')}[/green]\n"
+            f"[bold]Ontologie :[/bold] {gm.get('ontology', '?')}\n"
+            f"[bold]Mémoire :[/bold] {created}",
+            title="🌉 Connecté à Graph Memory",
+            border_style="green",
+        )
+    )
 
 
 def show_graph_status(result: dict):
     """Affiche le résultat d'un graph_status."""
     connected = result.get("connected", False)
     if not connected:
-        console.print(Panel.fit(
-            f"[bold]Space :[/bold] [cyan]{result.get('space_id', '?')}[/cyan]\n"
-            f"[dim]{result.get('message', 'Non connecté')}[/dim]",
-            title="🌉 Graph Memory — Non connecté", border_style="dim",
-        ))
+        console.print(
+            Panel.fit(
+                f"[bold]Space :[/bold] [cyan]{result.get('space_id', '?')}[/cyan]\n"
+                f"[dim]{result.get('message', 'Non connecté')}[/dim]",
+                title="🌉 Graph Memory — Non connecté",
+                border_style="dim",
+            )
+        )
         return
 
     config = result.get("config", {})
@@ -617,7 +702,11 @@ def show_graph_status(result: dict):
         lines.append(f"[bold]Pushs totaux :[/bold] {result.get('push_count', 0)}")
         lines.append(f"[bold]Fichiers :[/bold] {result.get('files_pushed', 0)}")
 
-    console.print(Panel.fit("\n".join(lines), title="🌉 Graph Memory — Config", border_style="blue"))
+    console.print(
+        Panel.fit(
+            "\n".join(lines), title="🌉 Graph Memory — Config", border_style="blue"
+        )
+    )
 
     # Section stats graphe
     if stats:
@@ -674,25 +763,33 @@ def show_graph_push_result(result: dict):
     if error_details:
         lines.append("")
         for ed in error_details:
-            lines.append(f"  [red]✗ {ed.get('filename', '?')} : {ed.get('error', '?')}[/red]")
-    console.print(Panel.fit("\n".join(lines), title="📤 Push Graph Memory", border_style=border))
+            lines.append(
+                f"  [red]✗ {ed.get('filename', '?')} : {ed.get('error', '?')}[/red]"
+            )
+    console.print(
+        Panel.fit("\n".join(lines), title="📤 Push Graph Memory", border_style=border)
+    )
 
 
 def show_graph_disconnected(result: dict):
     """Affiche le résultat d'un graph_disconnect."""
     was = result.get("was_connected_to", {})
-    console.print(Panel.fit(
-        f"[bold]Space :[/bold] [cyan]{result.get('space_id', '?')}[/cyan]\n"
-        f"[bold]Était connecté à :[/bold] {was.get('memory_id', '?')}\n"
-        f"[bold]URL :[/bold] {was.get('url', '?')}\n"
-        f"[bold]Pushs effectués :[/bold] {was.get('push_count', 0)}",
-        title="🔌 Déconnecté de Graph Memory", border_style="yellow",
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold]Space :[/bold] [cyan]{result.get('space_id', '?')}[/cyan]\n"
+            f"[bold]Était connecté à :[/bold] {was.get('memory_id', '?')}\n"
+            f"[bold]URL :[/bold] {was.get('url', '?')}\n"
+            f"[bold]Pushs effectués :[/bold] {was.get('push_count', 0)}",
+            title="🔌 Déconnecté de Graph Memory",
+            border_style="yellow",
+        )
+    )
 
 
 # =============================================================================
 # Backup
 # =============================================================================
+
 
 def show_backup_list(result: dict):
     """Affiche la liste des backups."""
@@ -702,5 +799,7 @@ def show_backup_list(result: dict):
     table.add_column("Space", style="dim")
     table.add_column("Timestamp")
     for b in backups:
-        table.add_row(b.get("backup_id", "?"), b.get("space_id", "?"), b.get("timestamp", "?"))
+        table.add_row(
+            b.get("backup_id", "?"), b.get("space_id", "?"), b.get("timestamp", "?")
+        )
     console.print(table)
