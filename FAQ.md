@@ -47,12 +47,12 @@ Ce qui fonctionne, ce qui reste, problèmes connus.
 
 Depuis **v0.8.1**, chaque token **est** un agent. Le `client_name` du token est automatiquement utilisé comme identité de l'agent — il n'y a plus de paramètre `agent=` dans `live_note`.
 
-|                        | **Token = Agent**                                    |
-| ---------------------- | ---------------------------------------------------- |
-| **Rôle**               | Authentification **et** identité                     |
-| **Exemple**            | Token `cline-dev` → agent `cline-dev`                |
-| **Partageable ?**      | Non — 1 token = 1 agent = 1 identité                |
-| **Où est-il fourni ?** | Header `Authorization: Bearer` (auto-détecté)        |
+|                        | **Token = Agent**                             |
+| ---------------------- | --------------------------------------------- |
+| **Rôle**               | Authentification **et** identité              |
+| **Exemple**            | Token `cline-dev` → agent `cline-dev`         |
+| **Partageable ?**      | Non — 1 token = 1 agent = 1 identité          |
+| **Où est-il fourni ?** | Header `Authorization: Bearer` (auto-détecté) |
 
 **Pourquoi ce changement ?** L'ancien modèle (Token ≠ Agent) permettait de passer un nom d'agent libre, ce qui causait des notes orphelines (agent non reconnu à la consolidation), de l'usurpation d'identité, et de l'éparpillement.
 
@@ -68,12 +68,12 @@ Oui ! `live_read(space_id="mon-projet")` retourne les notes de TOUS les agents. 
 
 Depuis **v1.5.0**, il y a 4 niveaux hiérarchiques :
 
-| Niveau      | Inclut       | Accès                                                                 |
-| ----------- | ------------ | --------------------------------------------------------------------- |
-| **read**    | —            | Lecture : `bank_read`, `live_read`, `space_info`, `backup_list`, etc. |
-| **write**   | read         | Écriture : `live_note`, `bank_consolidate`, `space_create`, etc.     |
-| **manage**  | write + read | Maintenance : `bank_write`, `bank_delete`, `bank_repair`, `bank_compact`, `space_delete`, `space_update_rules`, `backup_restore`, `backup_delete` |
-| **admin**   | manage + write + read | Administration : `admin_create_token`, `admin_gc_notes`, etc. |
+| Niveau     | Inclut                | Accès                                                                                                                                             |
+| ---------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **read**   | —                     | Lecture : `bank_read`, `live_read`, `space_info`, `backup_list`, etc.                                                                             |
+| **write**  | read                  | Écriture : `live_note`, `bank_consolidate`, `space_create`, etc.                                                                                  |
+| **manage** | write + read          | Maintenance : `bank_write`, `bank_delete`, `bank_repair`, `bank_compact`, `space_delete`, `space_update_rules`, `backup_restore`, `backup_delete` |
+| **admin**  | manage + write + read | Administration : `admin_create_token`, `admin_gc_notes`, etc.                                                                                     |
 
 Un token `write` ne peut **pas** modifier directement les fichiers bank ni supprimer des espaces — il faut `manage` ou `admin`.
 

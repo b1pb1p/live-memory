@@ -1,6 +1,6 @@
 # Analyse des Risques & Sécurité — Live Memory
 
-> **Version** : 0.5.0 | **Date** : 2026-03-08 | **Auteur** : Cloud Temple
+> **Version** : 1.6.0 | **Date** : 2026-04-25 | **Auteur** : Cloud Temple
 
 ---
 
@@ -9,7 +9,7 @@
 | Couche                 | Protection                                                       | Fichier              |
 | ---------------------- | ---------------------------------------------------------------- | -------------------- |
 | **WAF Coraza**         | OWASP CRS (injection SQL, XSS, path traversal, scanners)         | `waf/Caddyfile`      |
-| **Rate Limiting**      | Par IP : MCP 200/min, API 60/min, global 500/min | `waf/Caddyfile`      |
+| **Rate Limiting**      | Par IP : MCP 600/min, API 120/min, global 1500/min | `waf/Caddyfile`      |
 | **TLS**                | Let's Encrypt automatique (production)                           | `waf/Caddyfile`      |
 | **Security Headers**   | CSP, X-Frame-Options DENY, HSTS, nosniff, Permissions-Policy     | `waf/Caddyfile`      |
 | **Auth Token**         | Bearer token par client, permissions read/write/admin            | `auth/middleware.py` |
@@ -146,4 +146,4 @@ La vérification est faite dans **chaque outil** via `check_access(space_id)`.
 
 ---
 
-*Document mis à jour le 8 mars 2026 — Live Memory v0.5.0*
+*Document mis à jour le 25 avril 2026 — Live Memory v1.6.0*

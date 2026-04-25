@@ -108,12 +108,15 @@ def show_whoami_result(result: dict):
         perm_icons.append("🔑 read")
     if "write" in perms:
         perm_icons.append("✏️ write")
+    if "manage" in perms:
+        perm_icons.append("🔧 manage")
     if "admin" in perms:
         perm_icons.append("👑 admin")
     perm_display = "  ".join(perm_icons) if perm_icons else perm_str
 
     spaces = result.get("allowed_spaces") or result.get("space_ids") or []
-    spaces_str = ", ".join(spaces) if spaces else "[dim]tous[/dim]"
+    is_admin = "admin" in (result.get("permissions") or [])
+    spaces_str = ", ".join(spaces) if spaces else ("[dim]tous (admin)[/dim]" if is_admin else "[yellow]aucun (auto-ajout à la création)[/yellow]")
 
     lines = [
         f"[bold]Identité :[/bold] [cyan bold]{result.get('client_name', '?')}[/cyan bold]",
@@ -540,7 +543,7 @@ def show_token_created(result: dict):
             f"[bold]Nom :[/bold] {result.get('name', '?')}\n"
             f"[bold red]Token :[/bold red] [red]{result.get('token', '?')}[/red]\n"
             f"[bold]Permissions :[/bold] {', '.join(result.get('permissions', []))}\n"
-            f"[bold]Espaces :[/bold] {', '.join(result.get('space_ids', [])) or 'tous'}\n"
+            f"[bold]Espaces :[/bold] {', '.join(result.get('space_ids', [])) or ('tous (admin)' if 'admin' in result.get('permissions', []) else 'aucun (auto-ajout à la création)')}\n"
             f"[bold]Expire :[/bold] {result.get('expires_at', 'jamais')}\n\n"
             f"[bold yellow]{result.get('warning', '')}[/bold yellow]",
             title="🔑 Token créé",
@@ -564,7 +567,8 @@ def show_token_list(result: dict):
         created = t.get("created_at", "?")[:10] if t.get("created_at") else "?"
         expires = t.get("expires_at") or None
         expires = expires[:10] if expires else "jamais"
-        spaces = ", ".join(t.get("space_ids", [])) or "toutes"
+        is_admin_token = "admin" in t.get("permissions", [])
+        spaces = ", ".join(t.get("space_ids", [])) or ("tous" if is_admin_token else "aucun")
         name = t.get("name", "?")
         if t.get("revoked"):
             name = f"[dim strikethrough]{name}[/dim strikethrough]"

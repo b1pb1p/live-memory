@@ -653,7 +653,7 @@ def token_create_cmd(ctx, name, permissions, space_ids, expires_in_days, email, 
     "--permissions",
     "-p",
     type=VALID_PERMISSIONS,
-    default="",
+    default=None,
     help="Nouvelles permissions (read | read,write | read,write,manage | read,write,manage,admin)",
 )
 @click.option(

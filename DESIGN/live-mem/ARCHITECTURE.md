@@ -1,6 +1,6 @@
 # Architecture — Live Memory MCP Server
 
-> **Version** : 0.8.2 | **Date** : 2026-03-17 | **Auteur** : Cloud Temple
+> **Version** : 1.6.0 | **Date** : 2026-04-25 | **Auteur** : Cloud Temple
 > **Projet** : live-mem | **Licence** : Apache 2.0
 
 ---
@@ -72,7 +72,7 @@ live-mem      = Mémoire de TRAVAIL (notes live → LLM → Memory Bank)
 │              Live Memory MCP Server (:8002)               │
 │                                                           │
 │  ┌─────────────────┐  ┌──────────────────┐               │
-│  │  35 Outils MCP  │  │  LLM Service     │               │
+│  │  39 Outils MCP  │  │  LLM Service     │               │
 │  │  (7 catégories) │  │  (consolidator)  │               │
 │  └────────┬────────┘  └────────┬─────────┘               │
 │           │                    │                          │
@@ -118,7 +118,7 @@ live-mem      = Mémoire de TRAVAIL (notes live → LLM → Memory Bank)
 | Composant                | Rôle                                         | Technologie                              |
 | ------------------------ | -------------------------------------------- | ---------------------------------------- |
 | **WAF**                  | Reverse proxy sécurisé                       | Caddy + Coraza OWASP CRS + Rate Limiting |
-| **MCP Server**           | Serveur MCP Python (35 outils, 7 catégories) | FastMCP + Uvicorn (ASGI)                 |
+| **MCP Server**           | Serveur MCP Python (39 outils, 7 catégories) | FastMCP + Uvicorn (ASGI)                 |
 | **Storage Service**      | Abstraction S3 (lecture/écriture/listing)    | boto3 hybride SigV2/V4                   |
 | **Consolidator Service** | Synthèse LLM des notes → bank                | AsyncOpenAI (qwen3.5:27b)            |
 | **Graph Bridge**         | Pont vers Graph Memory (mémoire long terme)  | SDK MCP (streamablehttp_client)          |
@@ -420,4 +420,4 @@ CONSOLIDATION_MAX_NOTES=500      # Max notes par consolidation
 
 ---
 
-*Document mis à jour le 17 mars 2026 — Live Memory v0.8.2*
+*Document mis à jour le 25 avril 2026 — Live Memory v1.6.0*

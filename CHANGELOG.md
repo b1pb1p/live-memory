@@ -5,6 +5,29 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
 ---
 
+## [1.6.0] — 2026-04-25
+
+### Ajouté (PR #7 — BeArchiTek/Benoit Kohler)
+- **Health probe enrichi** — `/health` teste désormais S3 **et** LLMaaS, retourne `healthy`/`degraded`/`unhealthy` avec détail par service, latence et disponibilité du modèle configuré. Probe LLMaaS via `models.list()` (zéro consommation de tokens).
+- **4 middlewares ASGI** — `RequestIdMiddleware` (UUID `X-Request-Id`), `MetricsMiddleware` (`/metrics` Prometheus + JSON), `AuditMiddleware` (trail JSON structuré), `ResponseLimitMiddleware` (512 KB sur `/api/*`, paths MCP exclus).
+- **MCP tool annotations** — `readOnlyHint`, `destructiveHint`, `idempotentHint` sur les 39 outils MCP, conforme au standard MCP.
+- **Config validation fail-fast** — Le serveur refuse de démarrer si la configuration est invalide (port hors range, S3 partiel, URL malformée, bootstrap key par défaut, etc.).
+- **37 tests unitaires** — Couverture des middlewares, de la validation de config et du health probe (`tests/test_config.py`, `tests/test_middleware.py`).
+- **Logging JSON structuré** — Format JSON pour l'agrégation de logs en production (ELK, Loki).
+- **Docker Compose profiles** — MinIO en `profiles: [dev]` : `docker compose up` = prod (S3 distant), `docker compose --profile dev up` = dev (MinIO local).
+
+### Modifié
+- **Migration dépendances** — `requirements.txt` → `pyproject.toml` + `uv.lock`. ⚠️ **Breaking change** : `pip install -r requirements.txt` ne fonctionne plus, utiliser `uv sync --frozen`.
+- **Dockerfile** — Multi-stage avec `uv sync --frozen`, layer caching séparé deps/source.
+- **CLI health** — Utilise HTTP `/health` directement au lieu du handshake MCP complet (plus rapide, pas d'auth nécessaire).
+- **Pile middlewares ASGI** — Réordonnée : Audit → Auth → RequestId → Metrics → ResponseLimit → Logging → StaticFiles → MCP. L'audit middleware est placé avant l'auth pour capturer les rejets 403.
+- **CLI `token update`** — Fix du bug `--permissions` avec `default=None` au lieu de `default=""` (Click.Choice rejetait la valeur vide).
+
+### Corrigé
+- **ResponseLimitMiddleware** — Paths MCP (`/mcp`) exclus de la troncature pour protéger `space_export` et `backup_download` (archives base64 > 512 KB).
+
+---
+
 ## [1.5.1] — 2026-04-22
 
 ### Corrigé

@@ -1,12 +1,12 @@
 # Spécification des Outils MCP — Live Memory
 
-> **Version** : 0.8.2 | **Date** : 2026-03-17 | **Auteur** : Cloud Temple
+> **Version** : 1.6.0 | **Date** : 2026-04-25 | **Auteur** : Cloud Temple
 
 ---
 
 ## Vue d'ensemble
 
-Live Memory expose **35 outils MCP** répartis en 7 catégories :
+Live Memory expose **39 outils MCP** répartis en 7 catégories :
 
 | Catégorie       | Outils | Description                                      |
 | --------------- | ------ | ------------------------------------------------ |
@@ -746,4 +746,4 @@ async def admin_gc_notes(
 
 ---
 
-*Document mis à jour le 17 mars 2026 — Live Memory v0.8.2*
+*Document mis à jour le 25 avril 2026 — Live Memory v1.6.0*

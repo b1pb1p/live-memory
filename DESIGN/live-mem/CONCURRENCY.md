@@ -1,6 +1,6 @@
 # Gestion de la Concurrence Multi-Agents — Live Memory
 
-> **Version** : 0.5.0 | **Date** : 2026-03-08 | **Auteur** : Cloud Temple
+> **Version** : 1.6.0 | **Date** : 2026-04-25 | **Auteur** : Cloud Temple
 
 ---
 
@@ -208,4 +208,4 @@ T+5s:  Agent B → graph_push("projet-alpha")
 
 ---
 
-*Document mis à jour le 8 mars 2026 — Live Memory v0.5.0*
+*Document mis à jour le 25 avril 2026 — Live Memory v1.6.0*
