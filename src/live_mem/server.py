@@ -127,13 +127,14 @@ def create_app():
     app = mcp.streamable_http_app()
 
     # Empiler les middlewares (dernier ajouté = premier exécuté)
-    # Ordre d'exécution : RequestId → Metrics → Audit → Auth → Logging → ResponseLimit → Static → MCP
-    # Audit AVANT Auth pour capturer les 403 (rejets d'authentification)
+    # Ordre d'exécution : RequestId → Metrics → Auth → Audit → Logging → ResponseLimit → Static → MCP
+    # Audit APRÈS Auth pour que current_token_info soit encore set dans le finally d'Audit.
+    # Les 401 (rejets auth) sont audités directement par AuthMiddleware.
     app = StaticFilesMiddleware(app)
     app = ResponseLimitMiddleware(app, max_bytes=settings.response_max_bytes)
     app = LoggingMiddleware(app)
-    app = AuthMiddleware(app)
     app = AuditMiddleware(app)
+    app = AuthMiddleware(app)
     app = MetricsMiddleware(app)
     app = RequestIdMiddleware(app)
 

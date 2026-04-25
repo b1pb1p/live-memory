@@ -595,12 +595,20 @@ Retourne un JSON avec cette structure exacte :
                 # Parser le JSON
                 try:
                     data = json.loads(json_str)
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as exc:
+                    # Log la réponse brute (tronquée) pour diagnostic
+                    raw_preview = raw_content[:500] if raw_content else "(empty)"
+                    logger.warning(
+                        "LLM: JSON invalide (attempt %d/%d) — "
+                        "json_error=%s, raw_len=%d, raw_preview=%s",
+                        attempt + 1,
+                        2,
+                        str(exc)[:100],
+                        len(raw_content),
+                        raw_preview,
+                    )
                     if attempt == 0:
                         # Retry avec un rappel plus explicite
-                        logger.warning(
-                            "LLM: JSON invalide (attempt %d), retry...", attempt + 1
-                        )
                         messages.append({"role": "assistant", "content": raw_content})
                         messages.append(
                             {
@@ -616,6 +624,7 @@ Retourne un JSON avec cette structure exacte :
                     return {
                         "status": "error",
                         "message": "LLM returned invalid JSON after retry",
+                        "raw_preview": raw_preview,
                     }
 
                 # Valider la structure minimale

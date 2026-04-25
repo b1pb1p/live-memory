@@ -5,6 +5,17 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
 ---
 
+## [1.6.1] — 2026-04-25
+
+### Corrigé
+- **Audit middleware "unauthenticated"** — `AuditMiddleware` wrappait `AuthMiddleware`, son `finally` s'exécutait après le `reset()` du contextvar → le client apparaissait toujours comme `"unauthenticated"` dans les logs d'audit. Fix : réordonnancement de la pile middleware (Audit maintenant wrappé PAR Auth). Ajout d'un audit log directement dans `AuthMiddleware` pour les rejets 401.
+- **Diagnostic consolidation JSON** — Ajout du logging de la réponse brute du LLM (tronquée à 500 chars) en cas d'échec de parsing JSON (`json_error`, `raw_len`, `raw_preview`). Permet de diagnostiquer la cause racine des échecs de consolidation.
+
+### Modifié
+- **Pile middlewares ASGI** — Corrigée : RequestId → Metrics → Auth → **Audit** → Logging → ResponseLimit → StaticFiles → MCP. L'audit est désormais wrappé par Auth pour accéder au `current_token_info` avant son `reset()`. Les rejets 401 sont audités par Auth directement.
+
+---
+
 ## [1.6.0] — 2026-04-25
 
 ### Ajouté (PR #7 — BeArchiTek/Benoit Kohler)

@@ -22,6 +22,7 @@ from ..config import get_settings
 from ..middleware import current_request_id
 
 logger = logging.getLogger("live_mem.auth")
+audit_logger = logging.getLogger("live_mem.audit")
 
 
 class AuthMiddleware:
@@ -76,6 +77,24 @@ class AuthMiddleware:
                 }
             )
             await send({"type": "http.response.body", "body": body})
+
+            # Audit log pour les rejets d'auth (AuditMiddleware ne voit pas
+            # les 401 car Auth court-circuite avant de l'atteindre)
+            method = scope.get("method", "?")
+            audit_entry = {
+                "event": "auth_rejected",
+                "request_id": current_request_id.get(),
+                "method": method,
+                "path": path,
+                "status": 401,
+                "client": "unauthenticated",
+                "auth_type": "none",
+                "reason": "missing_or_invalid_token",
+            }
+            client = scope.get("client")
+            if client:
+                audit_entry["client_ip"] = client[0]
+            audit_logger.info(json.dumps(audit_entry, ensure_ascii=False))
             return
 
         # Injecter dans le contextvar
