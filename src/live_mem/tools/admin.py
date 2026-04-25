@@ -20,6 +20,7 @@ Voir AUTH_AND_COLLABORATION.md pour le modèle de tokens.
 from typing import Annotated
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 from pydantic import Field
 
 
@@ -34,13 +35,40 @@ def register(mcp: FastMCP) -> int:
         Nombre d'outils enregistrés (7)
     """
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=False))
     async def admin_create_token(
-        name: Annotated[str, Field(description="Nom descriptif du token (ex: 'agent-cline', 'ci-pipeline')")],
-        permissions: Annotated[str, Field(description="Permissions : 'read', 'read,write' ou 'read,write,admin'")],
-        space_ids: Annotated[str, Field(default="", description="Espaces autorisés séparés par virgules (vide = tous les espaces)")] = "",
-        expires_in_days: Annotated[int, Field(default=0, description="Durée de validité en jours (0 = jamais d'expiration)")] = 0,
-        email: Annotated[str, Field(default="", description="Email du propriétaire (optionnel, traçabilité)")] = "",
+        name: Annotated[
+            str,
+            Field(
+                description="Nom descriptif du token (ex: 'agent-cline', 'ci-pipeline')"
+            ),
+        ],
+        permissions: Annotated[
+            str,
+            Field(
+                description="Permissions : 'read', 'read,write' ou 'read,write,admin'"
+            ),
+        ],
+        space_ids: Annotated[
+            str,
+            Field(
+                default="",
+                description="Espaces autorisés séparés par virgules (vide = tous les espaces)",
+            ),
+        ] = "",
+        expires_in_days: Annotated[
+            int,
+            Field(
+                default=0,
+                description="Durée de validité en jours (0 = jamais d'expiration)",
+            ),
+        ] = 0,
+        email: Annotated[
+            str,
+            Field(
+                default="", description="Email du propriétaire (optionnel, traçabilité)"
+            ),
+        ] = "",
     ) -> dict:
         """
         Crée un nouveau token d'authentification.
@@ -74,9 +102,10 @@ def register(mcp: FastMCP) -> int:
             )
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "admin")
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     async def admin_list_tokens() -> dict:
         """
         Liste tous les tokens (métadonnées seulement, jamais en clair).
@@ -98,11 +127,17 @@ def register(mcp: FastMCP) -> int:
             return await get_token_service().list_tokens()
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "admin")
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True))
     async def admin_revoke_token(
-        token_hash: Annotated[str, Field(description="Hash tronqué du token à révoquer (obtenu via admin_list_tokens)")],
+        token_hash: Annotated[
+            str,
+            Field(
+                description="Hash tronqué du token à révoquer (obtenu via admin_list_tokens)"
+            ),
+        ],
     ) -> dict:
         """
         Révoque un token (le rend définitivement inutilisable).
@@ -124,11 +159,17 @@ def register(mcp: FastMCP) -> int:
             return await get_token_service().revoke_token(token_hash)
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "admin")
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(destructiveHint=True, idempotentHint=True))
     async def admin_delete_token(
-        token_hash: Annotated[str, Field(description="Hash tronqué du token à supprimer (obtenu via admin_list_tokens)")],
+        token_hash: Annotated[
+            str,
+            Field(
+                description="Hash tronqué du token à supprimer (obtenu via admin_list_tokens)"
+            ),
+        ],
     ) -> dict:
         """
         Supprime physiquement un token du registre.
@@ -157,11 +198,18 @@ def register(mcp: FastMCP) -> int:
             return await get_token_service().delete_token(token_hash)
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "admin")
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(destructiveHint=True, idempotentHint=False))
     async def admin_purge_tokens(
-        revoked_only: Annotated[bool, Field(default=True, description="True = supprime uniquement les tokens révoqués, False = supprime TOUS les tokens")] = True,
+        revoked_only: Annotated[
+            bool,
+            Field(
+                default=True,
+                description="True = supprime uniquement les tokens révoqués, False = supprime TOUS les tokens",
+            ),
+        ] = True,
     ) -> dict:
         """
         Purge en masse les tokens du registre.
@@ -188,14 +236,38 @@ def register(mcp: FastMCP) -> int:
             return await get_token_service().purge_tokens(revoked_only=revoked_only)
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "admin")
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=True))
     async def admin_update_token(
-        token_hash: Annotated[str, Field(description="Hash tronqué du token à modifier (obtenu via admin_list_tokens)")],
-        space_ids: Annotated[str, Field(default="", description="Nouveaux espaces autorisés séparés par virgules (vide = pas de changement)")] = "",
-        permissions: Annotated[str, Field(default="", description="Nouvelles permissions : 'read', 'read,write' ou 'read,write,admin' (vide = pas de changement)")] = "",
-        email: Annotated[str, Field(default="", description="Nouvel email du propriétaire (vide = pas de changement)")] = "",
+        token_hash: Annotated[
+            str,
+            Field(
+                description="Hash tronqué du token à modifier (obtenu via admin_list_tokens)"
+            ),
+        ],
+        space_ids: Annotated[
+            str,
+            Field(
+                default="",
+                description="Nouveaux espaces autorisés séparés par virgules (vide = pas de changement)",
+            ),
+        ] = "",
+        permissions: Annotated[
+            str,
+            Field(
+                default="",
+                description="Nouvelles permissions : 'read', 'read,write' ou 'read,write,admin' (vide = pas de changement)",
+            ),
+        ] = "",
+        email: Annotated[
+            str,
+            Field(
+                default="",
+                description="Nouvel email du propriétaire (vide = pas de changement)",
+            ),
+        ] = "",
     ) -> dict:
         """
         Met à jour les permissions ou espaces autorisés d'un token.
@@ -224,14 +296,38 @@ def register(mcp: FastMCP) -> int:
             )
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "admin")
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True))
     async def admin_gc_notes(
-        space_id: Annotated[str, Field(default="", description="Espace cible (vide = scanner TOUS les espaces)")] = "",
-        max_age_days: Annotated[int, Field(default=7, description="Seuil d'âge en jours pour considérer une note comme orpheline (défaut 7)")] = 7,
-        confirm: Annotated[bool, Field(default=False, description="False = dry-run (scan seul), True = exécution réelle")] = False,
-        delete_only: Annotated[bool, Field(default=False, description="Si True + confirm=True : supprime SANS consolider (perte de données)")] = False,
+        space_id: Annotated[
+            str,
+            Field(
+                default="", description="Espace cible (vide = scanner TOUS les espaces)"
+            ),
+        ] = "",
+        max_age_days: Annotated[
+            int,
+            Field(
+                default=7,
+                description="Seuil d'âge en jours pour considérer une note comme orpheline (défaut 7)",
+            ),
+        ] = 7,
+        confirm: Annotated[
+            bool,
+            Field(
+                default=False,
+                description="False = dry-run (scan seul), True = exécution réelle",
+            ),
+        ] = False,
+        delete_only: Annotated[
+            bool,
+            Field(
+                default=False,
+                description="Si True + confirm=True : supprime SANS consolider (perte de données)",
+            ),
+        ] = False,
     ) -> dict:
         """
         Garbage Collector : consolide ou supprime les notes orphelines.
@@ -297,6 +393,7 @@ def register(mcp: FastMCP) -> int:
 
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "admin")
 
     return 7  # Nombre d'outils enregistrés

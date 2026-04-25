@@ -18,7 +18,6 @@ Voir AUTH_AND_COLLABORATION.md pour le modèle complet.
 
 import secrets
 import hashlib
-import json
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
@@ -63,7 +62,9 @@ class TokenService:
         if len(token_hash) < 16:
             return (-3, None)  # Préfixe trop court
 
-        matches = [(i, t) for i, t in enumerate(store.tokens) if t.hash.startswith(token_hash)]
+        matches = [
+            (i, t) for i, t in enumerate(store.tokens) if t.hash.startswith(token_hash)
+        ]
 
         if len(matches) == 0:
             return (-1, None)
@@ -74,9 +75,15 @@ class TokenService:
     def _token_not_found_or_ambiguous(self, idx: int, token_hash: str) -> dict | None:
         """Retourne un message d'erreur si le token n'est pas trouvé, ou None si OK."""
         if idx == -3:
-            return {"status": "error", "message": f"Hash trop court ({len(token_hash)} chars). Minimum 16 caractères requis."}
+            return {
+                "status": "error",
+                "message": f"Hash trop court ({len(token_hash)} chars). Minimum 16 caractères requis.",
+            }
         if idx == -2:
-            return {"status": "error", "message": "Préfixe de hash ambigu — plusieurs tokens correspondent. Fournissez un hash plus long."}
+            return {
+                "status": "error",
+                "message": "Préfixe de hash ambigu — plusieurs tokens correspondent. Fournissez un hash plus long.",
+            }
         if idx == -1:
             return {"status": "not_found", "message": "Token introuvable"}
         return None
@@ -170,17 +177,19 @@ class TokenService:
         store = await self._load_store()
         tokens_list = []
         for t in store.tokens:
-            tokens_list.append({
-                "hash": t.hash,  # Hash complet pour identification
-                "name": t.name,
-                "email": t.email,
-                "permissions": t.permissions,
-                "space_ids": t.space_ids,
-                "created_at": t.created_at,
-                "expires_at": t.expires_at,
-                "last_used_at": t.last_used_at,
-                "revoked": t.revoked,
-            })
+            tokens_list.append(
+                {
+                    "hash": t.hash,  # Hash complet pour identification
+                    "name": t.name,
+                    "email": t.email,
+                    "permissions": t.permissions,
+                    "space_ids": t.space_ids,
+                    "created_at": t.created_at,
+                    "expires_at": t.expires_at,
+                    "last_used_at": t.last_used_at,
+                    "revoked": t.revoked,
+                }
+            )
 
         return {"status": "ok", "tokens": tokens_list, "total": len(tokens_list)}
 
@@ -314,7 +323,9 @@ class TokenService:
                 return err
 
             if permissions:
-                token.permissions = [p.strip() for p in permissions.split(",") if p.strip()]
+                token.permissions = [
+                    p.strip() for p in permissions.split(",") if p.strip()
+                ]
             if space_ids:
                 token.space_ids = [s.strip() for s in space_ids.split(",")]
             if email:

@@ -18,6 +18,7 @@ Voir S3_DATA_MODEL.md pour l'arborescence.
 from typing import Annotated
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 from pydantic import Field
 
 
@@ -32,10 +33,21 @@ def register(mcp: FastMCP) -> int:
         Nombre d'outils enregistrés (5)
     """
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=False))
     async def backup_create(
-        space_id: Annotated[str, Field(description="Identifiant de l'espace à sauvegarder (vide = TOUS les espaces, admin requis)")],
-        description: Annotated[str, Field(default="", description="Description du backup (optionnel, ex: 'avant migration')")] = "",
+        space_id: Annotated[
+            str,
+            Field(
+                description="Identifiant de l'espace à sauvegarder (vide = TOUS les espaces, admin requis)"
+            ),
+        ],
+        description: Annotated[
+            str,
+            Field(
+                default="",
+                description="Description du backup (optionnel, ex: 'avant migration')",
+            ),
+        ] = "",
     ) -> dict:
         """
         Crée un snapshot complet d'un espace sur S3.
@@ -54,7 +66,11 @@ def register(mcp: FastMCP) -> int:
         Returns:
             backup_id, nombre de fichiers, taille totale
         """
-        from ..auth.context import check_access, check_write_permission, check_admin_permission
+        from ..auth.context import (
+            check_access,
+            check_write_permission,
+            check_admin_permission,
+        )
         from ..core.backup import get_backup_service
 
         try:
@@ -77,11 +93,18 @@ def register(mcp: FastMCP) -> int:
                 return await get_backup_service().create(space_id, description)
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "backup")
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     async def backup_list(
-        space_id: Annotated[str, Field(default="", description="Filtrer par espace (vide = tous les espaces accessibles)")] = "",
+        space_id: Annotated[
+            str,
+            Field(
+                default="",
+                description="Filtrer par espace (vide = tous les espaces accessibles)",
+            ),
+        ] = "",
     ) -> dict:
         """
         Liste les backups disponibles.
@@ -118,8 +141,10 @@ def register(mcp: FastMCP) -> int:
             allowed = token_info.get("allowed_resources", [])
             if "admin" not in permissions and result.get("status") == "ok" and not space_id:
                 filtered = [
-                    b for b in result.get("backups", [])
-                    if b.get("space_id", b.get("backup_id", "").split("/")[0]) in allowed
+                    b
+                    for b in result.get("backups", [])
+                    if b.get("space_id", b.get("backup_id", "").split("/")[0])
+                    in allowed
                 ]
                 result["backups"] = filtered
                 result["total"] = len(filtered)
@@ -128,12 +153,26 @@ def register(mcp: FastMCP) -> int:
             return result
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "backup")
 
-    @mcp.tool()
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            readOnlyHint=False, destructiveHint=True, idempotentHint=False
+        )
+    )
     async def backup_restore(
-        backup_id: Annotated[str, Field(description="Identifiant du backup au format 'space_id/timestamp'")],
-        confirm: Annotated[bool, Field(default=False, description="Doit être True pour confirmer la restauration (sécurité)")] = False,
+        backup_id: Annotated[
+            str,
+            Field(description="Identifiant du backup au format 'space_id/timestamp'"),
+        ],
+        confirm: Annotated[
+            bool,
+            Field(
+                default=False,
+                description="Doit être True pour confirmer la restauration (sécurité)",
+            ),
+        ] = False,
     ) -> dict:
         """
         Restaure un espace depuis un backup.
@@ -165,11 +204,15 @@ def register(mcp: FastMCP) -> int:
             return await get_backup_service().restore(backup_id)
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "backup")
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     async def backup_download(
-        backup_id: Annotated[str, Field(description="Identifiant du backup au format 'space_id/timestamp'")],
+        backup_id: Annotated[
+            str,
+            Field(description="Identifiant du backup au format 'space_id/timestamp'"),
+        ],
     ) -> dict:
         """
         Télécharge un backup en archive tar.gz (base64).
@@ -197,12 +240,22 @@ def register(mcp: FastMCP) -> int:
             return await get_backup_service().download(backup_id)
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "backup")
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(destructiveHint=True, idempotentHint=True))
     async def backup_delete(
-        backup_id: Annotated[str, Field(description="Identifiant du backup au format 'space_id/timestamp'")],
-        confirm: Annotated[bool, Field(default=False, description="Doit être True pour confirmer la suppression (sécurité, irréversible)")] = False,
+        backup_id: Annotated[
+            str,
+            Field(description="Identifiant du backup au format 'space_id/timestamp'"),
+        ],
+        confirm: Annotated[
+            bool,
+            Field(
+                default=False,
+                description="Doit être True pour confirmer la suppression (sécurité, irréversible)",
+            ),
+        ] = False,
     ) -> dict:
         """
         Supprime un backup (irréversible).
@@ -231,6 +284,7 @@ def register(mcp: FastMCP) -> int:
             return await get_backup_service().delete(backup_id)
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "backup")
 
     return 5  # Nombre d'outils enregistrés

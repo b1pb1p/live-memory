@@ -8,7 +8,6 @@ et Rich pour l'affichage coloré.
 Commandes : help, health, whoami, about, space, live, bank, token, backup, quit.
 """
 
-import asyncio
 import shlex
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import WordCompleter
@@ -17,15 +16,36 @@ from pathlib import Path
 
 from .client import MCPClient
 from .display import (
-    console, show_error, show_success, show_warning, show_json,
-    show_health_result, show_whoami_result, show_about_result,
-    show_space_created, show_space_updated, show_rules_updated, show_space_list, show_space_info, show_rules, show_notes,
-    show_bank_list, show_bank_content, show_consolidation_result,
-    show_bank_write_result, show_bank_delete_result, show_bank_repair_result,
+    console,
+    show_error,
+    show_success,
+    show_warning,
+    show_json,
+    show_health_result,
+    show_whoami_result,
+    show_about_result,
+    show_space_created,
+    show_space_updated,
+    show_rules_updated,
+    show_space_list,
+    show_space_info,
+    show_rules,
+    show_notes,
+    show_bank_list,
+    show_bank_content,
+    show_consolidation_result,
+    show_bank_write_result,
+    show_bank_delete_result,
+    show_bank_repair_result,
     show_bank_compact_result,
-    show_graph_connected, show_graph_status, show_graph_push_result, show_graph_disconnected,
-    show_token_created, show_token_list,
-    show_backup_created, show_backup_list,
+    show_graph_connected,
+    show_graph_status,
+    show_graph_push_result,
+    show_graph_disconnected,
+    show_token_created,
+    show_token_list,
+    show_backup_created,
+    show_backup_list,
 )
 
 
@@ -38,8 +58,8 @@ SHELL_COMMANDS = {
     "health": "État de santé",
     "whoami": "Identité du token courant (nom, permissions, espaces)",
     "about": "Informations sur le service",
-    "space create": "Créer un espace (space create <id> -d \"desc\" -r <rules.md> [-o owner])",
-    "space update": "Modifier description/owner (space update <id> -d \"desc\" [-o \"owner\"])",
+    "space create": 'Créer un espace (space create <id> -d "desc" -r <rules.md> [-o owner])',
+    "space update": 'Modifier description/owner (space update <id> -d "desc" [-o "owner"])',
     "space update-rules": "Mettre à jour les rules (space update-rules <id> -f <rules.md>) admin",
     "space list": "Lister les espaces",
     "space info": "Infos d'un espace (space info <id>)",
@@ -84,12 +104,36 @@ SHELL_COMMANDS = {
 
 # Sous-commandes par verbe (pour help contextuel)
 VERB_SUBCOMMANDS = {
-    "space":  {k.split(" ",1)[1]: v for k, v in SHELL_COMMANDS.items() if k.startswith("space ")},
-    "live":   {k.split(" ",1)[1]: v for k, v in SHELL_COMMANDS.items() if k.startswith("live ")},
-    "bank":   {k.split(" ",1)[1]: v for k, v in SHELL_COMMANDS.items() if k.startswith("bank ")},
-    "token":  {k.split(" ",1)[1]: v for k, v in SHELL_COMMANDS.items() if k.startswith("token ")},
-    "graph":  {k.split(" ",1)[1]: v for k, v in SHELL_COMMANDS.items() if k.startswith("graph ")},
-    "backup": {k.split(" ",1)[1]: v for k, v in SHELL_COMMANDS.items() if k.startswith("backup ")},
+    "space": {
+        k.split(" ", 1)[1]: v
+        for k, v in SHELL_COMMANDS.items()
+        if k.startswith("space ")
+    },
+    "live": {
+        k.split(" ", 1)[1]: v
+        for k, v in SHELL_COMMANDS.items()
+        if k.startswith("live ")
+    },
+    "bank": {
+        k.split(" ", 1)[1]: v
+        for k, v in SHELL_COMMANDS.items()
+        if k.startswith("bank ")
+    },
+    "token": {
+        k.split(" ", 1)[1]: v
+        for k, v in SHELL_COMMANDS.items()
+        if k.startswith("token ")
+    },
+    "graph": {
+        k.split(" ", 1)[1]: v
+        for k, v in SHELL_COMMANDS.items()
+        if k.startswith("graph ")
+    },
+    "backup": {
+        k.split(" ", 1)[1]: v
+        for k, v in SHELL_COMMANDS.items()
+        if k.startswith("backup ")
+    },
 }
 
 
@@ -165,12 +209,21 @@ async def dispatch(client: MCPClient, user_input: str, json_output: bool):
             await _handle_backup(client, args, json_output)
 
     elif cmd == "gc":
-        gc_args = {"space_id": "", "max_age_days": 7, "confirm": False, "delete_only": False}
+        gc_args = {
+            "space_id": "",
+            "max_age_days": 7,
+            "confirm": False,
+            "delete_only": False,
+        }
         for i, a in enumerate(args):
-            if a == "--space-id" and i + 1 < len(args): gc_args["space_id"] = args[i + 1]
-            elif a == "--max-age-days" and i + 1 < len(args): gc_args["max_age_days"] = int(args[i + 1])
-            elif a == "--confirm": gc_args["confirm"] = True
-            elif a == "--delete-only": gc_args["delete_only"] = True
+            if a == "--space-id" and i + 1 < len(args):
+                gc_args["space_id"] = args[i + 1]
+            elif a == "--max-age-days" and i + 1 < len(args):
+                gc_args["max_age_days"] = int(args[i + 1])
+            elif a == "--confirm":
+                gc_args["confirm"] = True
+            elif a == "--delete-only":
+                gc_args["delete_only"] = True
         result = await client.call_tool("admin_gc_notes", gc_args)
         show_json(result)
 
@@ -181,6 +234,7 @@ async def dispatch(client: MCPClient, user_input: str, json_output: bool):
 # =============================================================================
 # Handlers par catégorie
 # =============================================================================
+
 
 async def _handle_space(client, args, json_out):
     """Handler pour les commandes space."""
@@ -230,18 +284,24 @@ async def _handle_space(client, args, json_out):
             space_id = positional[0] if positional else ""
 
         if not space_id:
-            console.print("[yellow]Usage : space create <space_id> -d \"description\" -r <rules_file.md>[/yellow]")
-            console.print("[yellow]   ou : space create <space_id> <description> <rules_inline>[/yellow]")
+            console.print(
+                '[yellow]Usage : space create <space_id> -d "description" -r <rules_file.md>[/yellow]'
+            )
+            console.print(
+                "[yellow]   ou : space create <space_id> <description> <rules_inline>[/yellow]"
+            )
             return
         if not rules:
-            show_error("Rules requises : -r <fichier.md> ou --rules \"contenu inline\"")
+            show_error('Rules requises : -r <fichier.md> ou --rules "contenu inline"')
             return
 
         tool_args = {"space_id": space_id, "description": description, "rules": rules}
         if owner:
             tool_args["owner"] = owner
         result = await client.call_tool("space_create", tool_args)
-        (show_json if json_out else show_space_created)(result) if result.get("status") == "created" else show_error(result.get("message", "?"))
+        (show_json if json_out else show_space_created)(result) if result.get(
+            "status"
+        ) == "created" else show_error(result.get("message", "?"))
 
     elif sub == "update" and len(args) >= 2:
         space_id = args[1]
@@ -254,7 +314,9 @@ async def _handle_space(client, args, json_out):
             elif a in ("-o", "--owner") and i + 1 < len(args):
                 owner = args[i + 1]
         if not description and not owner:
-            console.print("[yellow]Usage : space update <space_id> -d \"description\" [-o \"owner\"][/yellow]")
+            console.print(
+                '[yellow]Usage : space update <space_id> -d "description" [-o "owner"][/yellow]'
+            )
             return
         tool_args = {"space_id": space_id}
         if description:
@@ -275,15 +337,21 @@ async def _handle_space(client, args, json_out):
             if a in ("-f", "--rules-file") and i + 1 < len(args):
                 rules_file = args[i + 1]
         if not rules_file:
-            console.print("[yellow]Usage : space update-rules <space_id> -f <rules.md>[/yellow]")
+            console.print(
+                "[yellow]Usage : space update-rules <space_id> -f <rules.md>[/yellow]"
+            )
             return
         try:
             rules_content = Path(rules_file).read_text(encoding="utf-8")
         except Exception as e:
             show_error(f"Impossible de lire {rules_file}: {e}")
             return
-        result = await client.call_tool("space_update_rules", {"space_id": space_id, "rules": rules_content})
-        (show_json if json_out else show_rules_updated)(result) if result.get("status") == "ok" else show_error(result.get("message", "?"))
+        result = await client.call_tool(
+            "space_update_rules", {"space_id": space_id, "rules": rules_content}
+        )
+        (show_json if json_out else show_rules_updated)(result) if result.get(
+            "status"
+        ) == "ok" else show_error(result.get("message", "?"))
 
     elif sub == "list":
         result = await client.call_tool("space_list", {})
@@ -291,11 +359,15 @@ async def _handle_space(client, args, json_out):
 
     elif sub == "info" and len(args) >= 2:
         result = await client.call_tool("space_info", {"space_id": args[1]})
-        (show_json if json_out else show_space_info)(result) if result.get("status") == "ok" else show_error(result.get("message", "?"))
+        (show_json if json_out else show_space_info)(result) if result.get(
+            "status"
+        ) == "ok" else show_error(result.get("message", "?"))
 
     elif sub == "rules" and len(args) >= 2:
         result = await client.call_tool("space_rules", {"space_id": args[1]})
-        (show_json if json_out else show_rules)(result) if result.get("status") == "ok" else show_error(result.get("message", "?"))
+        (show_json if json_out else show_rules)(result) if result.get(
+            "status"
+        ) == "ok" else show_error(result.get("message", "?"))
 
     elif sub == "summary" and len(args) >= 2:
         result = await client.call_tool("space_summary", {"space_id": args[1]})
@@ -308,14 +380,22 @@ async def _handle_space(client, args, json_out):
     elif sub == "delete" and len(args) >= 2:
         confirm = "--confirm" in args
         if not confirm:
-            show_warning(f"⚠️  Suppression de '{args[1]}' — ajoutez --confirm pour confirmer :")
+            show_warning(
+                f"⚠️  Suppression de '{args[1]}' — ajoutez --confirm pour confirmer :"
+            )
             show_warning(f"   space delete {args[1]} --confirm")
             return
-        result = await client.call_tool("space_delete", {"space_id": args[1], "confirm": True})
-        show_success(f"Supprimé") if result.get("status") == "deleted" else show_error(result.get("message", "?"))
+        result = await client.call_tool(
+            "space_delete", {"space_id": args[1], "confirm": True}
+        )
+        show_success("Supprimé") if result.get("status") == "deleted" else show_error(
+            result.get("message", "?")
+        )
 
     else:
-        show_warning("Usage: space [create|update|list|info|rules|summary|export|delete] ...")
+        show_warning(
+            "Usage: space [create|update|list|info|rules|summary|export|delete] ..."
+        )
 
 
 async def _handle_live(client, args, json_out):
@@ -323,20 +403,35 @@ async def _handle_live(client, args, json_out):
     sub = args[0] if args else ""
 
     if sub == "note" and len(args) >= 4:
-        result = await client.call_tool("live_note", {
-            "space_id": args[1], "category": args[2], "content": " ".join(args[3:]),
-        })
-        show_success(f"Note: {result.get('filename', '?')}") if result.get("status") == "created" else show_error(result.get("message", "?"))
+        result = await client.call_tool(
+            "live_note",
+            {
+                "space_id": args[1],
+                "category": args[2],
+                "content": " ".join(args[3:]),
+            },
+        )
+        show_success(f"Note: {result.get('filename', '?')}") if result.get(
+            "status"
+        ) == "created" else show_error(result.get("message", "?"))
 
     elif sub == "read" and len(args) >= 2:
         result = await client.call_tool("live_read", {"space_id": args[1], "limit": 20})
-        (show_json if json_out else show_notes)(result) if result.get("status") == "ok" else show_error(result.get("message", "?"))
+        (show_json if json_out else show_notes)(result) if result.get(
+            "status"
+        ) == "ok" else show_error(result.get("message", "?"))
 
     elif sub == "search" and len(args) >= 3:
-        result = await client.call_tool("live_search", {
-            "space_id": args[1], "query": " ".join(args[2:]),
-        })
-        (show_json if json_out else show_notes)(result) if result.get("status") == "ok" else show_error(result.get("message", "?"))
+        result = await client.call_tool(
+            "live_search",
+            {
+                "space_id": args[1],
+                "query": " ".join(args[2:]),
+            },
+        )
+        (show_json if json_out else show_notes)(result) if result.get(
+            "status"
+        ) == "ok" else show_error(result.get("message", "?"))
 
     else:
         show_warning("Usage: live [note|read|search] ...")
@@ -348,11 +443,17 @@ async def _handle_bank(client, args, json_out):
 
     if sub == "list" and len(args) >= 2:
         result = await client.call_tool("bank_list", {"space_id": args[1]})
-        (show_json if json_out else show_bank_list)(result) if result.get("status") == "ok" else show_error(result.get("message", "?"))
+        (show_json if json_out else show_bank_list)(result) if result.get(
+            "status"
+        ) == "ok" else show_error(result.get("message", "?"))
 
     elif sub == "read" and len(args) >= 3:
-        result = await client.call_tool("bank_read", {"space_id": args[1], "filename": args[2]})
-        (show_json if json_out else show_bank_content)(result) if result.get("status") == "ok" else show_error(result.get("message", "?"))
+        result = await client.call_tool(
+            "bank_read", {"space_id": args[1], "filename": args[2]}
+        )
+        (show_json if json_out else show_bank_content)(result) if result.get(
+            "status"
+        ) == "ok" else show_error(result.get("message", "?"))
 
     elif sub == "read-all" and len(args) >= 2:
         result = await client.call_tool("bank_read_all", {"space_id": args[1]})
@@ -367,7 +468,9 @@ async def _handle_bank(client, args, json_out):
     elif sub == "consolidate" and len(args) >= 2:
         console.print("[dim]Consolidation en cours...[/dim]")
         result = await client.call_tool("bank_consolidate", {"space_id": args[1]})
-        (show_json if json_out else show_consolidation_result)(result) if result.get("status") == "ok" else show_error(result.get("message", "?"))
+        (show_json if json_out else show_consolidation_result)(result) if result.get(
+            "status"
+        ) == "ok" else show_error(result.get("message", "?"))
 
     elif sub == "write" and len(args) >= 3:
         space_id = args[1]
@@ -397,40 +500,73 @@ async def _handle_bank(client, args, json_out):
                 show_error(f"Impossible de lire {content_file}: {e}")
                 return
         if not content_val:
-            console.print("[yellow]Usage: bank write <space> <filename> -f <path.md>[/yellow]")
-            console.print("[yellow]  ou : bank write <space> <filename> -c \"contenu inline\"[/yellow]")
+            console.print(
+                "[yellow]Usage: bank write <space> <filename> -f <path.md>[/yellow]"
+            )
+            console.print(
+                '[yellow]  ou : bank write <space> <filename> -c "contenu inline"[/yellow]'
+            )
             return
-        result = await client.call_tool("bank_write", {
-            "space_id": space_id, "filename": filename, "content": content_val,
-        })
-        (show_json if json_out else show_bank_write_result)(result) if result.get("status") == "ok" else show_error(result.get("message", "?"))
+        result = await client.call_tool(
+            "bank_write",
+            {
+                "space_id": space_id,
+                "filename": filename,
+                "content": content_val,
+            },
+        )
+        (show_json if json_out else show_bank_write_result)(result) if result.get(
+            "status"
+        ) == "ok" else show_error(result.get("message", "?"))
 
     elif sub == "delete" and len(args) >= 3:
-        result = await client.call_tool("bank_delete", {
-            "space_id": args[1], "filename": args[2],
-        })
-        (show_json if json_out else show_bank_delete_result)(result) if result.get("status") == "deleted" else show_error(result.get("message", "?"))
+        result = await client.call_tool(
+            "bank_delete",
+            {
+                "space_id": args[1],
+                "filename": args[2],
+            },
+        )
+        (show_json if json_out else show_bank_delete_result)(result) if result.get(
+            "status"
+        ) == "deleted" else show_error(result.get("message", "?"))
 
     elif sub == "repair" and len(args) >= 2:
         dry_run = "--apply" not in args
-        result = await client.call_tool("bank_repair", {
-            "space_id": args[1], "dry_run": dry_run,
-        })
-        (show_json if json_out else show_bank_repair_result)(result) if result.get("status") == "ok" else show_error(result.get("message", "?"))
+        result = await client.call_tool(
+            "bank_repair",
+            {
+                "space_id": args[1],
+                "dry_run": dry_run,
+            },
+        )
+        (show_json if json_out else show_bank_repair_result)(result) if result.get(
+            "status"
+        ) == "ok" else show_error(result.get("message", "?"))
 
     elif sub == "compact" and len(args) >= 2:
         dry_run = "--apply" not in args
         if dry_run:
             console.print("[dim]Mode dry-run — analyse sans modification.[/dim]")
         else:
-            console.print("[dim]Compaction en cours... (peut prendre plusieurs secondes par fichier)[/dim]")
-        result = await client.call_tool("bank_compact", {
-            "space_id": args[1], "dry_run": dry_run,
-        })
-        (show_json if json_out else show_bank_compact_result)(result) if result.get("status") == "ok" else show_error(result.get("message", "?"))
+            console.print(
+                "[dim]Compaction en cours... (peut prendre plusieurs secondes par fichier)[/dim]"
+            )
+        result = await client.call_tool(
+            "bank_compact",
+            {
+                "space_id": args[1],
+                "dry_run": dry_run,
+            },
+        )
+        (show_json if json_out else show_bank_compact_result)(result) if result.get(
+            "status"
+        ) == "ok" else show_error(result.get("message", "?"))
 
     else:
-        show_warning("Usage: bank [list|read|read-all|consolidate|compact|write|delete|repair] ...")
+        show_warning(
+            "Usage: bank [list|read|read-all|consolidate|compact|write|delete|repair] ..."
+        )
 
 
 # Permissions valides (partagé avec le handler token)
@@ -475,7 +611,9 @@ async def _handle_token(client, args, json_out):
                     perms = flag
                 i += 1
         if not perms:
-            show_error("Permissions requises : --permissions/-p <read|read,write|read,write,manage|read,write,manage,admin>")
+            show_error(
+                "Permissions requises : --permissions/-p <read|read,write|read,write,manage|read,write,manage,admin>"
+            )
             show_warning("Ex: token create KSE -p read,write --email kevin@example.com")
             return
         if not _validate_permissions(perms):
@@ -490,7 +628,9 @@ async def _handle_token(client, args, json_out):
         if expires:
             mcp_args["expires_in_days"] = expires
         result = await client.call_tool("admin_create_token", mcp_args)
-        (show_json if json_out else show_token_created)(result) if result.get("status") == "created" else show_error(result.get("message", "?"))
+        (show_json if json_out else show_token_created)(result) if result.get(
+            "status"
+        ) == "created" else show_error(result.get("message", "?"))
 
     elif sub == "update" and len(args) >= 2:
         token_hash = args[1]
@@ -504,7 +644,9 @@ async def _handle_token(client, args, json_out):
                 perms = remaining[i + 1]
                 if not _validate_permissions(perms):
                     show_error(f"Permissions invalides : '{perms}'")
-                    show_warning("Valeurs acceptées : read | read,write | read,write,manage | read,write,manage,admin")
+                    show_warning(
+                        "Valeurs acceptées : read | read,write | read,write,manage | read,write,manage,admin"
+                    )
                     return
                 mcp_args["permissions"] = perms
                 i += 2
@@ -517,23 +659,33 @@ async def _handle_token(client, args, json_out):
             else:
                 i += 1
         if len(mcp_args) <= 1:
-            show_error("Rien à mettre à jour. Utilisez --permissions, --space-ids et/ou --email.")
+            show_error(
+                "Rien à mettre à jour. Utilisez --permissions, --space-ids et/ou --email."
+            )
             show_warning("Ex: token update sha256:a8c5 --email user@example.com")
             return
         result = await client.call_tool("admin_update_token", mcp_args)
-        show_success(result.get("message", "Token mis à jour")) if result.get("status") == "ok" else show_error(result.get("message", "?"))
+        show_success(result.get("message", "Token mis à jour")) if result.get(
+            "status"
+        ) == "ok" else show_error(result.get("message", "?"))
 
     elif sub == "list":
         result = await client.call_tool("admin_list_tokens", {})
-        (show_json if json_out else show_token_list)(result) if result.get("status") == "ok" else show_error(result.get("message", "?"))
+        (show_json if json_out else show_token_list)(result) if result.get(
+            "status"
+        ) == "ok" else show_error(result.get("message", "?"))
 
     elif sub == "revoke" and len(args) >= 2:
         result = await client.call_tool("admin_revoke_token", {"token_hash": args[1]})
-        show_success("Token révoqué") if result.get("status") == "ok" else show_error(result.get("message", "?"))
+        show_success("Token révoqué") if result.get("status") == "ok" else show_error(
+            result.get("message", "?")
+        )
 
     elif sub == "delete" and len(args) >= 2:
         result = await client.call_tool("admin_delete_token", {"token_hash": args[1]})
-        show_success(result.get("message", "Token supprimé")) if result.get("status") == "deleted" else show_error(result.get("message", "?"))
+        show_success(result.get("message", "Token supprimé")) if result.get(
+            "status"
+        ) == "deleted" else show_error(result.get("message", "?"))
 
     elif sub == "purge":
         confirm = "--confirm" in args
@@ -544,9 +696,13 @@ async def _handle_token(client, args, json_out):
             show_warning(f"   token purge {'--all ' if purge_all else ''}--confirm")
             return
         revoked_only = not purge_all
-        result = await client.call_tool("admin_purge_tokens", {"revoked_only": revoked_only})
+        result = await client.call_tool(
+            "admin_purge_tokens", {"revoked_only": revoked_only}
+        )
         if result.get("status") == "ok":
-            show_success(f"{result.get('deleted', 0)} token(s) supprimé(s), {result.get('remaining', 0)} restant(s)")
+            show_success(
+                f"{result.get('deleted', 0)} token(s) supprimé(s), {result.get('remaining', 0)} restant(s)"
+            )
         else:
             show_error(result.get("message", "?"))
 
@@ -560,24 +716,38 @@ async def _handle_graph(client, args, json_out):
 
     if sub == "connect" and len(args) >= 5:
         ontology = args[5] if len(args) >= 6 else "general"
-        result = await client.call_tool("graph_connect", {
-            "space_id": args[1], "url": args[2], "token": args[3],
-            "memory_id": args[4], "ontology": ontology,
-        })
-        (show_json if json_out else show_graph_connected)(result) if result.get("status") == "connected" else show_error(result.get("message", "?"))
+        result = await client.call_tool(
+            "graph_connect",
+            {
+                "space_id": args[1],
+                "url": args[2],
+                "token": args[3],
+                "memory_id": args[4],
+                "ontology": ontology,
+            },
+        )
+        (show_json if json_out else show_graph_connected)(result) if result.get(
+            "status"
+        ) == "connected" else show_error(result.get("message", "?"))
 
     elif sub == "push" and len(args) >= 2:
         console.print("[dim]Push en cours... (peut prendre plusieurs minutes)[/dim]")
         result = await client.call_tool("graph_push", {"space_id": args[1]})
-        (show_json if json_out else show_graph_push_result)(result) if result.get("status") == "ok" else show_error(result.get("message", "?"))
+        (show_json if json_out else show_graph_push_result)(result) if result.get(
+            "status"
+        ) == "ok" else show_error(result.get("message", "?"))
 
     elif sub == "status" and len(args) >= 2:
         result = await client.call_tool("graph_status", {"space_id": args[1]})
-        (show_json if json_out else show_graph_status)(result) if result.get("status") == "ok" else show_error(result.get("message", "?"))
+        (show_json if json_out else show_graph_status)(result) if result.get(
+            "status"
+        ) == "ok" else show_error(result.get("message", "?"))
 
     elif sub == "disconnect" and len(args) >= 2:
         result = await client.call_tool("graph_disconnect", {"space_id": args[1]})
-        (show_json if json_out else show_graph_disconnected)(result) if result.get("status") == "disconnected" else show_error(result.get("message", "?"))
+        (show_json if json_out else show_graph_disconnected)(result) if result.get(
+            "status"
+        ) == "disconnected" else show_error(result.get("message", "?"))
 
     else:
         show_warning("Usage: graph [connect|push|status|disconnect] ...")
@@ -594,25 +764,40 @@ async def _handle_backup(client, args, json_out):
             console.print("[dim]Backup de tous les espaces en cours...[/dim]")
             result = await client.call_tool("backup_create", {"space_id": ""})
             from .display import show_backup_all_result
-            (show_json if json_out else show_backup_all_result)(result) if result.get("status") == "ok" else show_error(result.get("message", "?"))
+
+            (show_json if json_out else show_backup_all_result)(result) if result.get(
+                "status"
+            ) == "ok" else show_error(result.get("message", "?"))
         elif len(args) >= 2:
             result = await client.call_tool("backup_create", {"space_id": args[1]})
-            (show_json if json_out else show_backup_created)(result) if result.get("status") == "created" else show_error(result.get("message", "?"))
+            (show_json if json_out else show_backup_created)(result) if result.get(
+                "status"
+            ) == "created" else show_error(result.get("message", "?"))
         else:
-            console.print("[yellow]Usage: backup create <space_id> ou backup create --all[/yellow]")
+            console.print(
+                "[yellow]Usage: backup create <space_id> ou backup create --all[/yellow]"
+            )
 
     elif sub == "list":
-        result = await client.call_tool("backup_list", {"space_id": args[1] if len(args) >= 2 else ""})
+        result = await client.call_tool(
+            "backup_list", {"space_id": args[1] if len(args) >= 2 else ""}
+        )
         (show_json if json_out else show_backup_list)(result)
 
     elif sub == "restore" and len(args) >= 2:
         confirm = "--confirm" in args
         if not confirm:
-            show_warning(f"⚠️  Restauration de '{args[1]}' — ajoutez --confirm pour confirmer :")
+            show_warning(
+                f"⚠️  Restauration de '{args[1]}' — ajoutez --confirm pour confirmer :"
+            )
             show_warning(f"   backup restore {args[1]} --confirm")
             return
-        result = await client.call_tool("backup_restore", {"backup_id": args[1], "confirm": True})
-        show_success(f"Restauré") if result.get("status") == "ok" else show_error(result.get("message", "?"))
+        result = await client.call_tool(
+            "backup_restore", {"backup_id": args[1], "confirm": True}
+        )
+        show_success("Restauré") if result.get("status") == "ok" else show_error(
+            result.get("message", "?")
+        )
 
     elif sub == "download" and len(args) >= 2:
         result = await client.call_tool("backup_download", {"backup_id": args[1]})
@@ -621,11 +806,17 @@ async def _handle_backup(client, args, json_out):
     elif sub == "delete" and len(args) >= 2:
         confirm = "--confirm" in args
         if not confirm:
-            show_warning(f"⚠️  Suppression de '{args[1]}' — ajoutez --confirm pour confirmer :")
+            show_warning(
+                f"⚠️  Suppression de '{args[1]}' — ajoutez --confirm pour confirmer :"
+            )
             show_warning(f"   backup delete {args[1]} --confirm")
             return
-        result = await client.call_tool("backup_delete", {"backup_id": args[1], "confirm": True})
-        show_success(f"Supprimé") if result.get("status") == "deleted" else show_error(result.get("message", "?"))
+        result = await client.call_tool(
+            "backup_delete", {"backup_id": args[1], "confirm": True}
+        )
+        show_success("Supprimé") if result.get("status") == "deleted" else show_error(
+            result.get("message", "?")
+        )
 
     else:
         show_warning("Usage: backup [create|list|restore|download|delete] ...")
@@ -635,9 +826,11 @@ async def _handle_backup(client, args, json_out):
 # Aide
 # =============================================================================
 
+
 def _show_help():
     """Affiche l'aide globale du shell."""
     from rich.table import Table
+
     table = Table(title="🐚 Commandes Live Memory", show_header=True)
     table.add_column("Commande", style="cyan bold", min_width=25)
     table.add_column("Description")
@@ -645,13 +838,16 @@ def _show_help():
         table.add_row(cmd, desc)
     table.add_row("", "")
     table.add_row("[dim]--json[/dim]", "[dim]Ajouter pour la sortie JSON[/dim]")
-    table.add_row("[dim]help <verbe>[/dim]", "[dim]Aide d'un verbe (ex: help space)[/dim]")
+    table.add_row(
+        "[dim]help <verbe>[/dim]", "[dim]Aide d'un verbe (ex: help space)[/dim]"
+    )
     console.print(table)
 
 
 def _show_verb_help(verb: str):
     """Affiche l'aide d'un verbe spécifique (sous-commandes)."""
     from rich.table import Table
+
     subs = VERB_SUBCOMMANDS.get(verb, {})
     if not subs:
         show_warning(f"Pas de sous-commandes pour '{verb}'.")
@@ -668,17 +864,38 @@ def _show_verb_help(verb: str):
 # Boucle principale
 # =============================================================================
 
+
 async def run_shell(url: str, token: str):
     """Lance le shell interactif Live Memory."""
     client = MCPClient(url, token)
 
     # Autocomplétion avec tous les mots-clés
     words = list(SHELL_COMMANDS.keys()) + [
-        "--json", "--confirm", "--all", "--apply",
-        "--permissions", "-p", "--space-ids", "-s",
-        "--description", "-d", "--rules-file", "-r", "--rules", "--owner", "-o",
-        "--email", "-e", "--content-file", "-f", "--content", "-c",
-        "read", "read,write", "read,write,manage", "read,write,manage,admin",
+        "--json",
+        "--confirm",
+        "--all",
+        "--apply",
+        "--permissions",
+        "-p",
+        "--space-ids",
+        "-s",
+        "--description",
+        "-d",
+        "--rules-file",
+        "-r",
+        "--rules",
+        "--owner",
+        "-o",
+        "--email",
+        "-e",
+        "--content-file",
+        "-f",
+        "--content",
+        "-c",
+        "read",
+        "read,write",
+        "read,write,manage",
+        "read,write,manage,admin",
     ]
     completer = WordCompleter(words, ignore_case=True)
 
@@ -688,7 +905,9 @@ async def run_shell(url: str, token: str):
         completer=completer,
     )
 
-    console.print(f"\n[bold cyan]🧠 Live Memory Shell[/bold cyan] — [green]{url}[/green]")
+    console.print(
+        f"\n[bold cyan]🧠 Live Memory Shell[/bold cyan] — [green]{url}[/green]"
+    )
     console.print("[dim]Tapez 'help' pour l'aide, 'quit' pour quitter.[/dim]\n")
 
     while True:

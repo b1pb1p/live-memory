@@ -1,25 +1,49 @@
 # =============================================================================
-# Dockerfile — Live Memory MCP Server (rootless)
+# Dockerfile — Live Memory MCP Server (multi-stage, rootless)
 # =============================================================================
-# Image Python 3.11 slim avec le serveur MCP Live Memory.
-# Le conteneur tourne en utilisateur non-root (mcp, UID 10001).
-# Aucune opération root après le USER — 100% rootless.
+# Two-stage build:
+#   1. Builder — installs dependencies via uv (frozen lockfile)
+#   2. Runtime — copies only the venv + source code (no build tools)
 #
 # Usage :
 #   docker compose build
 #   docker compose up -d
 # =============================================================================
 
-FROM python:3.11-slim
+ARG PYTHON_VER=3.11
+
+# ─────────────────────────────────────────────────────────────
+# Stage 1: Builder — install dependencies via uv
+# ─────────────────────────────────────────────────────────────
+FROM ghcr.io/astral-sh/uv:0.7-python${PYTHON_VER}-bookworm-slim AS builder
+
+WORKDIR /app
+
+ENV UV_PROJECT_ENVIRONMENT="/opt/venv"
+
+# 1) Install deps only (cached layer — only invalidated when lockfile changes)
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project --no-install-workspace
+
+# 2) Install the project itself
+COPY VERSION .
+COPY src/ src/
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
+
+# ─────────────────────────────────────────────────────────────
+# Stage 2: Runtime — lean production image
+# ─────────────────────────────────────────────────────────────
+FROM python:${PYTHON_VER}-slim
 
 WORKDIR /app
 
 # Créer l'utilisateur non-root AVANT tout COPY
 RUN useradd -r -u 10001 -s /bin/false mcp
 
-# Dépendances Python (en premier pour profiter du cache Docker)
-COPY --chown=mcp:mcp requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy virtual environment from builder (no pip/setuptools in runtime)
+COPY --from=builder --chown=mcp:mcp /opt/venv /opt/venv
 
 # Code source — copié directement avec les bons droits
 COPY --chown=mcp:mcp src/ src/
@@ -27,8 +51,9 @@ COPY --chown=mcp:mcp scripts/ scripts/
 COPY --chown=mcp:mcp RULES/ RULES/
 COPY --chown=mcp:mcp VERSION .
 
-# Le module live_mem est dans src/ → ajouter au PYTHONPATH
-ENV PYTHONPATH=/app/src
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
 # Basculer sur l'utilisateur non-root (rootless)
 USER mcp
@@ -36,7 +61,6 @@ USER mcp
 EXPOSE 8002
 
 # Healthcheck : vérifier que le serveur répond sur /health
-# (pas de curl dans slim → utiliser python)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8002/health', timeout=2)" || exit 1
 

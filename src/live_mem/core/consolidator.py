@@ -19,7 +19,6 @@ Principes :
 Voir CONSOLIDATION_LLM.md pour les détails du pipeline et des prompts.
 """
 
-import sys
 import re
 import json
 import time
@@ -195,8 +194,8 @@ class ConsolidatorService:
         batch_size = self._batch_size
         batches = []
         for i in range(0, len(all_notes), batch_size):
-            batch_notes = all_notes[i:i + batch_size]
-            batch_keys = all_notes_keys[i:i + batch_size]
+            batch_notes = all_notes[i : i + batch_size]
+            batch_keys = all_notes_keys[i : i + batch_size]
             batches.append((batch_notes, batch_keys))
 
         batch_count = len(batches)
@@ -220,14 +219,18 @@ class ConsolidatorService:
 
         logger.info(
             "Consolidation plan — %d notes in %d batch(es) of %d",
-            len(all_notes), batch_count, batch_size,
+            len(all_notes),
+            batch_count,
+            batch_size,
         )
 
         # ── Étape 3 : Traiter chaque lot ──────────────────
         for batch_idx, (batch_notes, batch_keys) in enumerate(batches, 1):
             logger.info(
                 "Batch %d/%d — %d notes",
-                batch_idx, batch_count, len(batch_notes),
+                batch_idx,
+                batch_count,
+                len(batch_notes),
             )
 
             # Relire la bank et la synthèse pour les lots suivants
@@ -250,7 +253,9 @@ class ConsolidatorService:
             if llm_result.get("status") == "error":
                 logger.error(
                     "Batch %d/%d LLM failed: %s — stopping (previous batches OK)",
-                    batch_idx, batch_count, llm_result.get("message"),
+                    batch_idx,
+                    batch_count,
+                    llm_result.get("message"),
                 )
                 break
 
@@ -269,7 +274,9 @@ class ConsolidatorService:
             if write_result.get("status") != "ok":
                 logger.error(
                     "Batch %d/%d write failed: %s — stopping",
-                    batch_idx, batch_count, write_result.get("message"),
+                    batch_idx,
+                    batch_count,
+                    write_result.get("message"),
                 )
                 break
 
@@ -287,7 +294,8 @@ class ConsolidatorService:
 
             logger.info(
                 "Batch %d/%d done — %d notes, %d created, %d updated, %d tokens",
-                batch_idx, batch_count,
+                batch_idx,
+                batch_count,
                 len(batch_notes),
                 write_result.get("bank_files_created", 0),
                 write_result.get("bank_files_updated", 0),
@@ -313,10 +321,15 @@ class ConsolidatorService:
         logger.info(
             "Consolidation done — space=%s agent=%s notes=%d batches=%d/%d "
             "created=%d updated=%d tokens=%d duration=%.1fs",
-            space_id, agent_label, total_notes,
-            batches_completed, batch_count,
-            total_created, total_updated,
-            total_tokens, duration,
+            space_id,
+            agent_label,
+            total_notes,
+            batches_completed,
+            batch_count,
+            total_created,
+            total_updated,
+            total_tokens,
+            duration,
         )
 
         return {
@@ -370,7 +383,8 @@ class ConsolidatorService:
         # Le nom de l'agent est dans le nom de fichier : {ts}_{agent}_{cat}_{uuid}.md
         if agent:
             notes_raw = [
-                n for n in notes_raw
+                n
+                for n in notes_raw
                 if f"_{agent}_" in n["key"].split("/")[-1]
                 or n["key"].split("/")[-1].startswith(f"{agent}_")
             ]
@@ -379,7 +393,7 @@ class ConsolidatorService:
         notes_remaining = 0
         if len(notes_raw) > self._max_notes:
             notes_remaining = len(notes_raw) - self._max_notes
-            notes_raw = notes_raw[:self._max_notes]
+            notes_raw = notes_raw[: self._max_notes]
 
         # Garder les clés pour la suppression ultérieure
         notes_keys = [n["key"] for n in notes_raw]
@@ -539,7 +553,9 @@ Retourne un JSON avec cette structure exacte :
         # - Plancher : 8192 tokens (minimum pour du JSON chirurgical)
         _MIN_OUTPUT_TOKENS = 8192
         remaining_in_window = self._context_window - estimated_input_tokens
-        output_budget = max(_MIN_OUTPUT_TOKENS, min(self._max_tokens, remaining_in_window))
+        output_budget = max(
+            _MIN_OUTPUT_TOKENS, min(self._max_tokens, remaining_in_window)
+        )
 
         if estimated_input_tokens > self._context_window * 0.8:
             logger.warning(
@@ -547,15 +563,19 @@ Retourne un JSON avec cette structure exacte :
                 "(context_window=%d, max_tokens=%d). "
                 "Budget sortie réduit à %d tokens. "
                 "Considérez réduire la taille de la bank.",
-                estimated_input_tokens, self._context_window,
-                self._max_tokens, output_budget,
+                estimated_input_tokens,
+                self._context_window,
+                self._max_tokens,
+                output_budget,
             )
 
         logger.info(
             "LLM call — input ~%d tokens, context_window=%d, "
             "output budget %d tokens (max_tokens=%d)",
-            estimated_input_tokens, self._context_window,
-            output_budget, self._max_tokens,
+            estimated_input_tokens,
+            self._context_window,
+            output_budget,
+            self._max_tokens,
         )
 
         for attempt in range(2):  # 1 essai + 1 retry
@@ -578,16 +598,20 @@ Retourne un JSON avec cette structure exacte :
                 except json.JSONDecodeError:
                     if attempt == 0:
                         # Retry avec un rappel plus explicite
-                        logger.warning("LLM: JSON invalide (attempt %d), retry...", attempt + 1)
+                        logger.warning(
+                            "LLM: JSON invalide (attempt %d), retry...", attempt + 1
+                        )
                         messages.append({"role": "assistant", "content": raw_content})
-                        messages.append({
-                            "role": "user",
-                            "content": (
-                                "Ta réponse n'est pas du JSON valide. "
-                                "Retourne UNIQUEMENT un objet JSON valide "
-                                "avec file_edits et synthesis."
-                            ),
-                        })
+                        messages.append(
+                            {
+                                "role": "user",
+                                "content": (
+                                    "Ta réponse n'est pas du JSON valide. "
+                                    "Retourne UNIQUEMENT un objet JSON valide "
+                                    "avec file_edits et synthesis."
+                                ),
+                            }
+                        )
                         continue
                     return {
                         "status": "error",
@@ -600,15 +624,20 @@ Retourne un JSON avec cette structure exacte :
                     if "bank_files" in data and "synthesis" in data:
                         data = _convert_legacy_format(data)
                     elif attempt == 0:
-                        logger.warning("LLM: structure invalide (attempt %d), retry...", attempt + 1)
+                        logger.warning(
+                            "LLM: structure invalide (attempt %d), retry...",
+                            attempt + 1,
+                        )
                         messages.append({"role": "assistant", "content": raw_content})
-                        messages.append({
-                            "role": "user",
-                            "content": (
-                                "Ta réponse doit contenir 'file_edits' et 'synthesis'. "
-                                "Retourne le JSON au format demandé."
-                            ),
-                        })
+                        messages.append(
+                            {
+                                "role": "user",
+                                "content": (
+                                    "Ta réponse doit contenir 'file_edits' et 'synthesis'. "
+                                    "Retourne le JSON au format demandé."
+                                ),
+                            }
+                        )
                         continue
                     else:
                         return {
@@ -666,8 +695,8 @@ Retourne un JSON avec cette structure exacte :
         # On sanitise les clés pour matcher avec les filenames du LLM (qui sont
         # aussi sanitisés). On garde la correspondance raw_key → sanitized pour
         # pouvoir nettoyer les anciennes clés S3 contaminées par Unicode.
-        bank_index = {}         # sanitized_filename → content
-        bank_raw_keys = {}      # sanitized_filename → [liste des clés S3 brutes]
+        bank_index = {}  # sanitized_filename → content
+        bank_raw_keys = {}  # sanitized_filename → [liste des clés S3 brutes]
         for bf in bank_files:
             raw_key = bf["key"]
             # Extraire le chemin relatif complet (supporte les sous-dossiers)
@@ -696,7 +725,8 @@ Retourne un JSON avec cette structure exacte :
                 if rk != canonical_key:
                     logger.info(
                         "Cleaning Unicode duplicate: %r → canonical %s",
-                        rk, canonical_key,
+                        rk,
+                        canonical_key,
                     )
                     await storage.delete(rk)
                     files_cleaned += 1
@@ -732,9 +762,7 @@ Retourne un JSON avec cette structure exacte :
                     await storage.put(f"{space_id}/bank/{filename}", content)
                     await _cleanup_unicode_duplicates(filename)
                     files_updated += 1
-                    logger.info(
-                        "Rewrote bank file: %s (reason: %s)", filename, reason
-                    )
+                    logger.info("Rewrote bank file: %s (reason: %s)", filename, reason)
 
             elif action == "edit":
                 # Édition chirurgicale : appliquer les opérations
@@ -786,14 +814,16 @@ Retourne un JSON avec cette structure exacte :
                         len(operations),
                     )
             else:
-                logger.warning("Action inconnue '%s' pour %s, ignorée", action, filename)
+                logger.warning(
+                    "Action inconnue '%s' pour %s, ignorée", action, filename
+                )
 
         # 4b. Écrire la synthèse résiduelle
         synthesis_content = llm_output.get("synthesis", "")
         now = datetime.now(timezone.utc).isoformat()
         synthesis_md = (
             f"---\n"
-            f"consolidated_at: \"{now}\"\n"
+            f'consolidated_at: "{now}"\n'
             f"notes_processed: {notes_count}\n"
             f"mode: surgical_edit\n"
             f"operations_applied: {operations_applied}\n"
@@ -837,7 +867,9 @@ Retourne un JSON avec cette structure exacte :
             "llm_completion_tokens": usage.get("completion_tokens", 0),
         }
 
-    async def _deduplicate_content(self, content: str, filename: str) -> tuple[str, int]:
+    async def _deduplicate_content(
+        self, content: str, filename: str
+    ) -> tuple[str, int]:
         """
         Détecte et fusionne les sections dupliquées via le LLM.
 
@@ -869,14 +901,23 @@ Retourne un JSON avec cette structure exacte :
             # Vérifier que les indices sont valides (sécurité défensive)
             if any(i >= len(sections) for i in indices):
                 logger.error(
-                    "DEDUP %s: indices invalides pour '%s' "
-                    "(max=%d, indices=%s) — skip",
-                    filename, heading, len(sections) - 1, indices,
+                    "DEDUP %s: indices invalides pour '%s' (max=%d, indices=%s) — skip",
+                    filename,
+                    heading,
+                    len(sections) - 1,
+                    indices,
                 )
                 break
 
             # Extraire le contenu de chaque version dupliquée
             versions = [sections[i]["content"] for i in indices]
+
+            logger.warning(
+                "DEDUP %s: heading '%s' trouvé %d fois — fusion via LLM",
+                filename,
+                heading,
+                len(indices),
+            )
 
             # ── Optimisation : skip LLM si les versions sont identiques
             # ou si l'une est un sous-ensemble de l'autre ──
@@ -895,8 +936,8 @@ Retourne un JSON avec cette structure exacte :
                 # On compare au niveau des LIGNES (pas des sous-chaînes) pour
                 # éviter les faux positifs comme "OK" in "Jalon OK terminé".
                 short_v, long_v = sorted(unique, key=len)
-                short_lines = {l.strip() for l in short_v.splitlines() if l.strip()}
-                long_lines = {l.strip() for l in long_v.splitlines() if l.strip()}
+                short_lines = {ln.strip() for ln in short_v.splitlines() if ln.strip()}
+                long_lines = {ln.strip() for ln in long_v.splitlines() if ln.strip()}
                 if short_lines and short_lines.issubset(long_lines):
                     merged = long_v  # Garder la version la plus complète
                     logger.info(
@@ -934,7 +975,8 @@ Retourne un JSON avec cette structure exacte :
                 logger.error(
                     "DEDUP %s: fusion LLM échouée pour '%s' — "
                     "fallback: conservation de la dernière occurrence",
-                    filename, heading,
+                    filename,
+                    heading,
                 )
                 for idx in reversed(indices[:-1]):
                     sections.pop(idx)
@@ -996,28 +1038,21 @@ CONSIGNE : Fusionne ces versions en UNE SEULE version cohérente.
 
             logger.info(
                 "DEDUP merge OK: '%s' — %d versions → 1 (%d chars)",
-                heading, len(versions), len(merged),
+                heading,
+                len(versions),
+                len(merged),
             )
             return merged
 
         except Exception as e:
-            logger.error(
-                "DEDUP merge FAILED: '%s' — %s", heading, str(e)
-            )
+            logger.error("DEDUP merge FAILED: '%s' — %s", heading, str(e))
             return None
 
     async def test_connection(self) -> dict:
         """Teste la connexion au LLMaaS avec un appel minimal."""
         try:
             t0 = time.monotonic()
-            test_messages: list[dict[str, str]] = [
-                {"role": "user", "content": "Réponds OK"}
-            ]
-            response = await self._client.chat.completions.create(
-                model=self._model,
-                messages=test_messages,  # type: ignore[arg-type]
-                max_tokens=5,
-            )
+            await self._client.models.list()
             latency = round((time.monotonic() - t0) * 1000, 1)
             return {
                 "status": "ok",
@@ -1070,17 +1105,25 @@ CONSIGNE : Fusionne ces versions en UNE SEULE version cohérente.
         if estimated_bank_tokens <= self._max_tokens * self._compact_threshold:
             logger.debug(
                 "Bank size OK — %d bytes (~%d tokens), threshold %.0f%% of %d",
-                total_bank_size, estimated_bank_tokens,
-                self._compact_threshold * 100, self._max_tokens,
+                total_bank_size,
+                estimated_bank_tokens,
+                self._compact_threshold * 100,
+                self._max_tokens,
             )
-            return {"compacted": False, "files_compacted": 0,
-                    "size_before": total_bank_size, "size_after": total_bank_size}
+            return {
+                "compacted": False,
+                "files_compacted": 0,
+                "size_before": total_bank_size,
+                "size_after": total_bank_size,
+            }
 
         logger.warning(
             "COMPACT — Bank trop grosse : %d bytes (~%d tokens, "
             "seuil=%.0f%% de %d). Compaction en cours...",
-            total_bank_size, estimated_bank_tokens,
-            self._compact_threshold * 100, self._max_tokens,
+            total_bank_size,
+            estimated_bank_tokens,
+            self._compact_threshold * 100,
+            self._max_tokens,
         )
 
         # Identifier les fichiers à compacter (ceux qui dépassent leur limite)
@@ -1103,7 +1146,9 @@ CONSIGNE : Fusionne ces versions en UNE SEULE version cohérente.
             # Ce fichier doit être compacté
             logger.info(
                 "COMPACT %s — %d bytes (max %d), compaction via LLM...",
-                filename, file_size, max_size,
+                filename,
+                file_size,
+                max_size,
             )
 
             compacted = await self._compact_single_file(
@@ -1117,7 +1162,9 @@ CONSIGNE : Fusionne ces versions en UNE SEULE version cohérente.
                 size_after += len(compacted)
                 logger.info(
                     "COMPACT %s — %d → %d bytes (-%d%%)",
-                    filename, file_size, len(compacted),
+                    filename,
+                    file_size,
+                    len(compacted),
                     round((1 - len(compacted) / file_size) * 100),
                 )
             else:
@@ -1307,43 +1354,47 @@ Retourne UNIQUEMENT le contenu compacté (Markdown pur, pas de JSON, pas de bali
 # noms de fichiers (surtout dans les réponses JSON longues — "drift").
 # Leur présence crée des clés S3 visuellement identiques mais techniquement
 # différentes, rendant les fichiers illisibles par bank_read.
-_INVISIBLE_CHARS = frozenset({
-    '\u200b',  # Zero Width Space
-    '\u200c',  # Zero Width Non-Joiner
-    '\u200d',  # Zero Width Joiner
-    '\u200e',  # Left-to-Right Mark
-    '\u200f',  # Right-to-Left Mark
-    '\u202a',  # Left-to-Right Embedding
-    '\u202b',  # Right-to-Left Embedding
-    '\u202c',  # Pop Directional Formatting
-    '\u202d',  # Left-to-Right Override
-    '\u202e',  # Right-to-Left Override
-    '\u2060',  # Word Joiner
-    '\u2061',  # Function Application
-    '\u2062',  # Invisible Times
-    '\u2063',  # Invisible Separator
-    '\u2064',  # Invisible Plus
-    '\ufeff',  # Byte Order Mark (ZWNBS)
-    '\u00ad',  # Soft Hyphen
-    '\u034f',  # Combining Grapheme Joiner
-    '\u061c',  # Arabic Letter Mark
-    '\u180e',  # Mongolian Vowel Separator
-})
+_INVISIBLE_CHARS = frozenset(
+    {
+        "\u200b",  # Zero Width Space
+        "\u200c",  # Zero Width Non-Joiner
+        "\u200d",  # Zero Width Joiner
+        "\u200e",  # Left-to-Right Mark
+        "\u200f",  # Right-to-Left Mark
+        "\u202a",  # Left-to-Right Embedding
+        "\u202b",  # Right-to-Left Embedding
+        "\u202c",  # Pop Directional Formatting
+        "\u202d",  # Left-to-Right Override
+        "\u202e",  # Right-to-Left Override
+        "\u2060",  # Word Joiner
+        "\u2061",  # Function Application
+        "\u2062",  # Invisible Times
+        "\u2063",  # Invisible Separator
+        "\u2064",  # Invisible Plus
+        "\ufeff",  # Byte Order Mark (ZWNBS)
+        "\u00ad",  # Soft Hyphen
+        "\u034f",  # Combining Grapheme Joiner
+        "\u061c",  # Arabic Letter Mark
+        "\u180e",  # Mongolian Vowel Separator
+    }
+)
 
 # Caractères Unicode ressemblant à des tirets mais qui ne sont pas
 # le tiret ASCII standard (U+002D). Normalisés vers '-'.
-_HYPHEN_LIKE = frozenset({
-    '\u2010',  # Hyphen
-    '\u2011',  # Non-Breaking Hyphen
-    '\u2012',  # Figure Dash
-    '\u2013',  # En Dash
-    '\u2014',  # Em Dash
-    '\u2015',  # Horizontal Bar
-    '\u2212',  # Minus Sign
-    '\ufe58',  # Small Em Dash
-    '\ufe63',  # Small Hyphen-Minus
-    '\uff0d',  # Fullwidth Hyphen-Minus
-})
+_HYPHEN_LIKE = frozenset(
+    {
+        "\u2010",  # Hyphen
+        "\u2011",  # Non-Breaking Hyphen
+        "\u2012",  # Figure Dash
+        "\u2013",  # En Dash
+        "\u2014",  # Em Dash
+        "\u2015",  # Horizontal Bar
+        "\u2212",  # Minus Sign
+        "\ufe58",  # Small Em Dash
+        "\ufe63",  # Small Hyphen-Minus
+        "\uff0d",  # Fullwidth Hyphen-Minus
+    }
+)
 
 
 def _sanitize_filename(filename: str) -> str:
@@ -1375,12 +1426,12 @@ def _sanitize_filename(filename: str) -> str:
             removed += 1
             continue
         elif ch in _HYPHEN_LIKE:
-            chars.append('-')
+            chars.append("-")
             normalized += 1
         else:
             chars.append(ch)
 
-    sanitized = ''.join(chars).strip()
+    sanitized = "".join(chars).strip()
 
     # Nettoyer les préfixes parasites que le LLM invente en lisant les rules.
     # Ex: les rules presales disent "ILS SONT DANS LE REPERTOIRE 1.MEMORY_BANK"
@@ -1390,10 +1441,11 @@ def _sanitize_filename(filename: str) -> str:
     for prefix in _PARASITIC_PREFIXES:
         if sanitized.startswith(prefix):
             old = sanitized
-            sanitized = sanitized[len(prefix):]
+            sanitized = sanitized[len(prefix) :]
             logger.warning(
                 "Filename parasitic prefix removed: %r → %r",
-                old, sanitized,
+                old,
+                sanitized,
             )
 
     # Nettoyer les / en début/fin et les doubles //
@@ -1404,7 +1456,10 @@ def _sanitize_filename(filename: str) -> str:
     if removed > 0 or normalized > 0:
         logger.warning(
             "Filename sanitized: %r → %r (removed %d invisible, normalized %d hyphens)",
-            filename, sanitized, removed, normalized,
+            filename,
+            sanitized,
+            removed,
+            normalized,
         )
 
     return sanitized
@@ -1413,6 +1468,7 @@ def _sanitize_filename(filename: str) -> str:
 # ─────────────────────────────────────────────────────────────
 # Moteur d'édition Markdown
 # ─────────────────────────────────────────────────────────────
+
 
 def _parse_sections(content: str) -> list[dict]:
     """
@@ -1445,13 +1501,15 @@ def _parse_sections(content: str) -> list[dict]:
 
         if heading_match:
             # Sauvegarder la section précédente
-            sections.append({
-                "heading": current_heading,
-                "heading_text": current_heading_text,
-                "level": current_level,
-                "content": "\n".join(current_content_lines),
-                "start_line": current_start,
-            })
+            sections.append(
+                {
+                    "heading": current_heading,
+                    "heading_text": current_heading_text,
+                    "level": current_level,
+                    "content": "\n".join(current_content_lines),
+                    "start_line": current_start,
+                }
+            )
 
             # Commencer une nouvelle section
             hashes = heading_match.group(1)
@@ -1464,13 +1522,15 @@ def _parse_sections(content: str) -> list[dict]:
             current_content_lines.append(line)
 
     # Sauvegarder la dernière section
-    sections.append({
-        "heading": current_heading,
-        "heading_text": current_heading_text,
-        "level": current_level,
-        "content": "\n".join(current_content_lines),
-        "start_line": current_start,
-    })
+    sections.append(
+        {
+            "heading": current_heading,
+            "heading_text": current_heading_text,
+            "level": current_level,
+            "content": "\n".join(current_content_lines),
+            "start_line": current_start,
+        }
+    )
 
     return sections
 
@@ -1657,7 +1717,8 @@ def _op_add_section(
         logger.warning(
             "add_section '%s' AUTO-CONVERTI en replace_section "
             "(section déjà existante à l'index %d)",
-            heading, existing_idx,
+            heading,
+            existing_idx,
         )
         return _op_replace_section(content, heading, new_content)
 
@@ -1775,6 +1836,7 @@ def _op_delete_section(content: str, heading: str) -> str:
 # Helpers
 # ─────────────────────────────────────────────────────────────
 
+
 def _extract_json(text: str) -> str:
     """
     Extrait le JSON d'une réponse LLM qui peut le contenir dans :
@@ -1807,7 +1869,7 @@ def _extract_json(text: str) -> str:
     first_brace = text.find("{")
     last_brace = text.rfind("}")
     if first_brace != -1 and last_brace > first_brace:
-        return text[first_brace:last_brace + 1]
+        return text[first_brace : last_brace + 1]
 
     # 5. Retourner le texte tel quel (json.loads() échouera)
     return text.strip()
@@ -1828,12 +1890,14 @@ def _convert_legacy_format(data: dict) -> dict:
     file_edits = []
     for bf in data.get("bank_files", []):
         old_action = bf.get("action", "updated")
-        file_edits.append({
-            "filename": bf.get("filename", ""),
-            "action": "create" if old_action == "created" else "rewrite",
-            "content": bf.get("content", ""),
-            "reason": "Legacy format conversion (LLM used old bank_files format)",
-        })
+        file_edits.append(
+            {
+                "filename": bf.get("filename", ""),
+                "action": "create" if old_action == "created" else "rewrite",
+                "content": bf.get("content", ""),
+                "reason": "Legacy format conversion (LLM used old bank_files format)",
+            }
+        )
 
     return {
         "file_edits": file_edits,

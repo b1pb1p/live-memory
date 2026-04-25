@@ -33,7 +33,6 @@ import time
 import base64
 import asyncio
 import logging
-from typing import Optional
 from datetime import datetime, timezone
 
 from mcp import ClientSession
@@ -48,6 +47,7 @@ logger = logging.getLogger("live_mem.graph_bridge")
 # ─────────────────────────────────────────────────────────────
 # Client MCP léger pour communiquer avec Graph Memory
 # ─────────────────────────────────────────────────────────────
+
 
 class GraphMemoryClient:
     """
@@ -81,7 +81,7 @@ class GraphMemoryClient:
         self._base_url = base_url.rstrip("/")
         for suffix in ("/sse", "/mcp"):
             if self._base_url.endswith(suffix):
-                self._base_url = self._base_url[:-len(suffix)]
+                self._base_url = self._base_url[: -len(suffix)]
         self._token = token
         self._timeout = timeout
 
@@ -138,13 +138,10 @@ class GraphMemoryClient:
 
         except asyncio.TimeoutError:
             raise TimeoutError(
-                f"Timeout après {self._timeout}s pour '{tool_name}' "
-                f"sur Graph Memory"
+                f"Timeout après {self._timeout}s pour '{tool_name}' sur Graph Memory"
             )
         except Exception as e:
-            raise ConnectionError(
-                f"Erreur MCP '{tool_name}' sur Graph Memory : {e}"
-            )
+            raise ConnectionError(f"Erreur MCP '{tool_name}' sur Graph Memory : {e}")
 
     async def call_tools_batch(self, calls: list[tuple[str, dict]]) -> list[dict]:
         """
@@ -185,29 +182,38 @@ class GraphMemoryClient:
                             else:
                                 results.append({"status": "ok", "raw": ""})
                         except asyncio.TimeoutError:
-                            results.append({
-                                "status": "error",
-                                "message": f"Timeout {self._timeout}s pour '{tool_name}'",
-                            })
+                            results.append(
+                                {
+                                    "status": "error",
+                                    "message": f"Timeout {self._timeout}s pour '{tool_name}'",
+                                }
+                            )
                         except Exception as e:
-                            results.append({
-                                "status": "error",
-                                "message": f"Erreur '{tool_name}': {e}",
-                            })
+                            results.append(
+                                {
+                                    "status": "error",
+                                    "message": f"Erreur '{tool_name}': {e}",
+                                }
+                            )
 
         except Exception as e:
             # Si la connexion elle-même échoue, remplir tous les résultats manquants
             while len(results) < len(calls):
-                results.append({
-                    "status": "error",
-                    "message": f"Connexion Graph Memory échouée : {e}",
-                })
+                results.append(
+                    {
+                        "status": "error",
+                        "message": f"Connexion Graph Memory échouée : {e}",
+                    }
+                )
 
         return results
 
     # Context manager pour compatibilité (délègue à call_tool par appel)
     async def __aenter__(self):
-        logger.info("GraphMemoryClient connecté (mode appels auto-contenus) : %s", self._base_url)
+        logger.info(
+            "GraphMemoryClient connecté (mode appels auto-contenus) : %s",
+            self._base_url,
+        )
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -217,6 +223,7 @@ class GraphMemoryClient:
 # ─────────────────────────────────────────────────────────────
 # Service Graph Bridge
 # ─────────────────────────────────────────────────────────────
+
 
 class GraphBridgeService:
     """
@@ -294,15 +301,18 @@ class GraphBridgeService:
             memory_created = False
             if memory_id not in existing_ids:
                 # Créer la mémoire dans graph-memory
-                create_result = await gm.call_tool("memory_create", {
-                    "memory_id": memory_id,
-                    "name": f"Live Memory — {space_id}",
-                    "description": (
-                        f"Memory Bank synchronisée depuis live-memory "
-                        f"space '{space_id}'"
-                    ),
-                    "ontology": ontology,
-                })
+                create_result = await gm.call_tool(
+                    "memory_create",
+                    {
+                        "memory_id": memory_id,
+                        "name": f"Live Memory — {space_id}",
+                        "description": (
+                            f"Memory Bank synchronisée depuis live-memory "
+                            f"space '{space_id}'"
+                        ),
+                        "ontology": ontology,
+                    },
+                )
 
                 if create_result.get("status") == "error":
                     return {
@@ -316,7 +326,8 @@ class GraphBridgeService:
                 memory_created = True
                 logger.info(
                     "Mémoire '%s' créée dans Graph Memory (ontologie: %s)",
-                    memory_id, ontology,
+                    memory_id,
+                    ontology,
                 )
 
         except ConnectionError as e:
@@ -342,7 +353,9 @@ class GraphBridgeService:
 
         logger.info(
             "Space '%s' connecté à Graph Memory '%s' (%s)",
-            space_id, memory_id, url,
+            space_id,
+            memory_id,
+            url,
         )
 
         return {
@@ -409,8 +422,7 @@ class GraphBridgeService:
         # Lire tous les fichiers bank depuis S3
         bank_data = await storage.list_and_get(f"{space_id}/bank/")
         bank_files = {
-            bank_relpath(item["key"], space_id): item["content"]
-            for item in bank_data
+            bank_relpath(item["key"], space_id): item["content"] for item in bank_data
         }
 
         if not bank_files:
@@ -428,9 +440,12 @@ class GraphBridgeService:
 
         try:
             # 1. Lister les documents existants dans graph-memory
-            doc_list = await gm.call_tool("document_list", {
-                "memory_id": memory_id,
-            })
+            doc_list = await gm.call_tool(
+                "document_list",
+                {
+                    "memory_id": memory_id,
+                },
+            )
             existing_docs = set()
             if doc_list.get("status") == "ok":
                 for doc in doc_list.get("documents", []):
@@ -438,7 +453,10 @@ class GraphBridgeService:
 
             logger.info(
                 "Push '%s' → '%s' : %d fichiers bank, %d docs existants",
-                space_id, memory_id, len(bank_files), len(existing_docs),
+                space_id,
+                memory_id,
+                len(bank_files),
+                len(existing_docs),
             )
 
             # 2. Construire le batch d'appels (delete + ingest pour chaque fichier)
@@ -448,29 +466,44 @@ class GraphBridgeService:
             for filename, content in bank_files.items():
                 # Si le document existe → supprimer d'abord
                 if filename in existing_docs:
-                    calls.append(("document_delete", {
-                        "memory_id": memory_id,
-                        "filename": filename,
-                    }))
+                    calls.append(
+                        (
+                            "document_delete",
+                            {
+                                "memory_id": memory_id,
+                                "filename": filename,
+                            },
+                        )
+                    )
                     call_metadata.append(("delete", filename))
 
                 # Encoder en base64 et ingérer
                 content_bytes = content.encode("utf-8")
                 content_b64 = base64.b64encode(content_bytes).decode("ascii")
-                calls.append(("memory_ingest", {
-                    "memory_id": memory_id,
-                    "content_base64": content_b64,
-                    "filename": filename,
-                }))
+                calls.append(
+                    (
+                        "memory_ingest",
+                        {
+                            "memory_id": memory_id,
+                            "content_base64": content_b64,
+                            "filename": filename,
+                        },
+                    )
+                )
                 call_metadata.append(("ingest", filename))
 
             # 3. Nettoyage des orphelins
             orphan_docs = existing_docs - set(bank_files.keys())
             for orphan in orphan_docs:
-                calls.append(("document_delete", {
-                    "memory_id": memory_id,
-                    "filename": orphan,
-                }))
+                calls.append(
+                    (
+                        "document_delete",
+                        {
+                            "memory_id": memory_id,
+                            "filename": orphan,
+                        },
+                    )
+                )
                 call_metadata.append(("clean", orphan))
 
             # 4. Exécuter tout le batch dans une seule session
@@ -487,13 +520,25 @@ class GraphBridgeService:
                 if result.get("status") == "error":
                     if action == "ingest":
                         errors += 1
-                        error_details.append({
-                            "filename": filename,
-                            "error": result.get("message", ""),
-                        })
-                        logger.error("Échec %s '%s' : %s", action, filename, result.get("message", ""))
+                        error_details.append(
+                            {
+                                "filename": filename,
+                                "error": result.get("message", ""),
+                            }
+                        )
+                        logger.error(
+                            "Échec %s '%s' : %s",
+                            action,
+                            filename,
+                            result.get("message", ""),
+                        )
                     else:
-                        logger.warning("Échec %s '%s' : %s", action, filename, result.get("message", ""))
+                        logger.warning(
+                            "Échec %s '%s' : %s",
+                            action,
+                            filename,
+                            result.get("message", ""),
+                        )
                 else:
                     if action == "ingest":
                         pushed += 1
@@ -540,9 +585,13 @@ class GraphBridgeService:
             result["error_details"] = error_details
 
         logger.info(
-            "Push terminé '%s' → '%s' : %d poussés, %d nettoyés, "
-            "%d erreurs (%.1fs)",
-            space_id, memory_id, pushed, cleaned, errors, duration,
+            "Push terminé '%s' → '%s' : %d poussés, %d nettoyés, %d erreurs (%.1fs)",
+            space_id,
+            memory_id,
+            pushed,
+            cleaned,
+            errors,
+            duration,
         )
 
         return result
@@ -593,10 +642,12 @@ class GraphBridgeService:
             gm = GraphMemoryClient(config.url, config.token)
 
             # Batch : stats + document_list
-            results = await gm.call_tools_batch([
-                ("memory_stats", {"memory_id": config.memory_id}),
-                ("document_list", {"memory_id": config.memory_id}),
-            ])
+            results = await gm.call_tools_batch(
+                [
+                    ("memory_stats", {"memory_id": config.memory_id}),
+                    ("document_list", {"memory_id": config.memory_id}),
+                ]
+            )
 
             stats = results[0]
             doc_list = results[1]
@@ -614,12 +665,14 @@ class GraphBridgeService:
             graph_documents = []
             if doc_list.get("status") == "ok":
                 for doc in doc_list.get("documents", []):
-                    graph_documents.append({
-                        "filename": doc.get("filename", "?"),
-                        "entity_count": doc.get("entity_count", 0),
-                        "ingested_at": doc.get("ingested_at", ""),
-                        "size": doc.get("size_bytes", doc.get("size", 0)),
-                    })
+                    graph_documents.append(
+                        {
+                            "filename": doc.get("filename", "?"),
+                            "entity_count": doc.get("entity_count", 0),
+                            "ingested_at": doc.get("ingested_at", ""),
+                            "size": doc.get("size_bytes", doc.get("size", 0)),
+                        }
+                    )
 
         except ConnectionError as e:
             return {
@@ -698,10 +751,7 @@ class GraphBridgeService:
         if "graph_memory" not in meta_data or meta_data["graph_memory"] is None:
             return {
                 "status": "ok",
-                "message": (
-                    f"Espace '{space_id}' n'est pas connecté "
-                    f"à Graph Memory"
-                ),
+                "message": (f"Espace '{space_id}' n'est pas connecté à Graph Memory"),
             }
 
         old_config = meta_data["graph_memory"]
@@ -710,7 +760,8 @@ class GraphBridgeService:
 
         logger.info(
             "Space '%s' déconnecté de Graph Memory '%s'",
-            space_id, old_config.get("memory_id", ""),
+            space_id,
+            old_config.get("memory_id", ""),
         )
 
         return {

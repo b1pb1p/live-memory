@@ -16,7 +16,6 @@ Architecture :
 """
 
 import re
-import sys
 import logging
 from datetime import datetime, timezone, timedelta
 
@@ -56,10 +55,7 @@ class GCService:
             space_ids = [space_id]
         else:
             prefixes = await storage.list_prefixes("")
-            space_ids = [
-                p.rstrip("/") for p in prefixes
-                if not p.startswith("_")
-            ]
+            space_ids = [p.rstrip("/") for p in prefixes if not p.startswith("_")]
 
         result = {
             "status": "ok",
@@ -76,7 +72,8 @@ class GCService:
 
             objects = await storage.list_objects(f"{sid}/live/")
             notes = [
-                o for o in objects
+                o
+                for o in objects
                 if o["Key"].endswith(".md") and not o["Key"].endswith(".keep")
             ]
 
@@ -92,11 +89,13 @@ class GCService:
                     continue
 
                 if ts < cutoff_str:
-                    old_notes.append({
-                        "key": key,
-                        "size": note_obj.get("Size", 0),
-                        "timestamp": ts,
-                    })
+                    old_notes.append(
+                        {
+                            "key": key,
+                            "size": note_obj.get("Size", 0),
+                            "timestamp": ts,
+                        }
+                    )
                     agent = _extract_agent(filename)
                     by_agent[agent] = by_agent.get(agent, 0) + 1
                     if oldest is None or ts < oldest:
@@ -201,8 +200,12 @@ class GCService:
                     }
                     total_consolidated += r.get("notes_processed", 0)
 
-                    logger.info("GC: consolidated %d notes from '%s' in '%s'",
-                                r.get('notes_processed', 0), agent_name, sid)
+                    logger.info(
+                        "GC: consolidated %d notes from '%s' in '%s'",
+                        r.get("notes_processed", 0),
+                        agent_name,
+                        sid,
+                    )
 
                 except Exception as e:
                     consolidation_results[sid][agent_name] = {
@@ -273,6 +276,7 @@ class GCService:
 # ─────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────
+
 
 def _extract_timestamp(filename: str) -> str | None:
     """Extrait le timestamp du nom de fichier. Format : YYYYMMDDTHHMMSS_..."""

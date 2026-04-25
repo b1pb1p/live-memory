@@ -22,6 +22,7 @@ des permissions via les helpers auth/context.py.
 from typing import Annotated
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 from pydantic import Field
 
 
@@ -36,12 +37,31 @@ def register(mcp: FastMCP) -> int:
         Nombre d'outils enregistrés (9)
     """
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=False))
     async def space_create(
-        space_id: Annotated[str, Field(description="Identifiant unique de l'espace (alphanum + tirets, max 64 chars)")],
-        description: Annotated[str, Field(description="Description courte de l'espace")],
-        rules: Annotated[str, Field(default="", description="Contenu Markdown des rules définissant la structure de la Memory Bank. Si vide, utilise les rules par défaut (DEFAULT_RULES_FILE)")] = "",
-        owner: Annotated[str, Field(default="", description="Propriétaire de l'espace (optionnel, informatif)")] = "",
+        space_id: Annotated[
+            str,
+            Field(
+                description="Identifiant unique de l'espace (alphanum + tirets, max 64 chars)"
+            ),
+        ],
+        description: Annotated[
+            str, Field(description="Description courte de l'espace")
+        ],
+        rules: Annotated[
+            str,
+            Field(
+                default="",
+                description="Contenu Markdown des rules définissant la structure de la Memory Bank. Si vide, utilise les rules par défaut (DEFAULT_RULES_FILE)",
+            ),
+        ] = "",
+        owner: Annotated[
+            str,
+            Field(
+                default="",
+                description="Propriétaire de l'espace (optionnel, informatif)",
+            ),
+        ] = "",
     ) -> dict:
         """
         Crée un nouvel espace mémoire avec ses rules.
@@ -119,13 +139,28 @@ def register(mcp: FastMCP) -> int:
             return result
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "space")
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=True))
     async def space_update(
-        space_id: Annotated[str, Field(description="Identifiant de l'espace à modifier")],
-        description: Annotated[str, Field(default="", description="Nouvelle description (vide = pas de changement)")] = "",
-        owner: Annotated[str, Field(default="", description="Nouveau propriétaire (vide = pas de changement)")] = "",
+        space_id: Annotated[
+            str, Field(description="Identifiant de l'espace à modifier")
+        ],
+        description: Annotated[
+            str,
+            Field(
+                default="",
+                description="Nouvelle description (vide = pas de changement)",
+            ),
+        ] = "",
+        owner: Annotated[
+            str,
+            Field(
+                default="",
+                description="Nouveau propriétaire (vide = pas de changement)",
+            ),
+        ] = "",
     ) -> dict:
         """
         Met à jour les métadonnées d'un espace (description, owner).
@@ -160,9 +195,10 @@ def register(mcp: FastMCP) -> int:
             )
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "space")
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=True))
     async def space_update_rules(
         space_id: Annotated[str, Field(description="Identifiant de l'espace")],
         rules: Annotated[str, Field(description="Nouveau contenu Markdown des rules")],
@@ -202,9 +238,10 @@ def register(mcp: FastMCP) -> int:
             )
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "space")
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     async def space_list() -> dict:
         """
         Liste tous les espaces mémoire accessibles par le token courant.
@@ -235,14 +272,13 @@ def register(mcp: FastMCP) -> int:
             else:
                 allowed_ids = allowed
 
-            return await get_space_service().list_spaces(
-                allowed_space_ids=allowed_ids
-            )
+            return await get_space_service().list_spaces(allowed_space_ids=allowed_ids)
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "space")
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     async def space_info(
         space_id: Annotated[str, Field(description="Identifiant de l'espace")],
     ) -> dict:
@@ -269,9 +305,10 @@ def register(mcp: FastMCP) -> int:
             return await get_space_service().get_info(space_id)
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "space")
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     async def space_rules(
         space_id: Annotated[str, Field(description="Identifiant de l'espace")],
     ) -> dict:
@@ -299,9 +336,10 @@ def register(mcp: FastMCP) -> int:
             return await get_space_service().get_rules(space_id)
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "space")
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     async def space_summary(
         space_id: Annotated[str, Field(description="Identifiant de l'espace")],
     ) -> dict:
@@ -328,11 +366,14 @@ def register(mcp: FastMCP) -> int:
             return await get_space_service().get_summary(space_id)
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "space")
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     async def space_export(
-        space_id: Annotated[str, Field(description="Identifiant de l'espace à exporter")],
+        space_id: Annotated[
+            str, Field(description="Identifiant de l'espace à exporter")
+        ],
     ) -> dict:
         """
         Exporte un espace complet en archive tar.gz (base64).
@@ -357,12 +398,21 @@ def register(mcp: FastMCP) -> int:
             return await get_space_service().export_space(space_id)
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "space")
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(destructiveHint=True, idempotentHint=False))
     async def space_delete(
-        space_id: Annotated[str, Field(description="Identifiant de l'espace à supprimer")],
-        confirm: Annotated[bool, Field(default=False, description="Doit être True pour confirmer la suppression (sécurité)")] = False,
+        space_id: Annotated[
+            str, Field(description="Identifiant de l'espace à supprimer")
+        ],
+        confirm: Annotated[
+            bool,
+            Field(
+                default=False,
+                description="Doit être True pour confirmer la suppression (sécurité)",
+            ),
+        ] = False,
     ) -> dict:
         """
         Supprime un espace et TOUTES ses données (irréversible).
@@ -404,6 +454,7 @@ def register(mcp: FastMCP) -> int:
             return await get_space_service().delete(space_id)
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "space")
 
     return 9  # Nombre d'outils enregistrés

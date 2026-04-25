@@ -14,13 +14,12 @@ L'AuthMiddleware :
 
 import hmac
 import json
-import sys
 import time
-import hashlib
 import logging
 from typing import Optional
 from .context import current_token_info, check_access
 from ..config import get_settings
+from ..middleware import current_request_id
 
 logger = logging.getLogger("live_mem.auth")
 
@@ -35,7 +34,7 @@ class AuthMiddleware:
     """
 
     # Routes qui ne nécessitent pas d'authentification
-    PUBLIC_PATHS = {"/health", "/favicon.ico", "/live", "/live/"}
+    PUBLIC_PATHS = {"/health", "/metrics", "/favicon.ico", "/live", "/live/"}
 
     # Préfixes de routes publiques (fichiers statiques)
     PUBLIC_PREFIXES = ("/static/",)
@@ -66,14 +65,16 @@ class AuthMiddleware:
         # Bloquer si pas de token valide sur route non-publique
         if token_info is None:
             body = json.dumps({"error": "Authorization header required"}).encode()
-            await send({
-                "type": "http.response.start",
-                "status": 401,
-                "headers": [
-                    (b"content-type", b"application/json"),
-                    (b"content-length", str(len(body)).encode()),
-                ],
-            })
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 401,
+                    "headers": [
+                        (b"content-type", b"application/json"),
+                        (b"content-length", str(len(body)).encode()),
+                    ],
+                }
+            )
             await send({"type": "http.response.body", "body": body})
             return
 
@@ -128,6 +129,7 @@ class AuthMiddleware:
         # Mode 2 : Validation via TokenService (tokens stockés sur S3)
         try:
             from ..core.tokens import get_token_service
+
             token_info = await get_token_service().validate_token(token)
             if token_info:
                 return token_info
@@ -143,8 +145,12 @@ class LoggingMiddleware:
     """
     Middleware ASGI de logging des requêtes HTTP.
 
-    Log sur stderr : méthode, path, status, durée.
+    Emits structured JSON log lines to stderr with:
+    request_id, method, path, status, latency_ms, client identity.
     """
+
+    # Paths not worth logging (high-frequency probes)
+    _QUIET_PATHS = {"/health", "/metrics"}
 
     def __init__(self, app):
         self.app = app
@@ -168,9 +174,22 @@ class LoggingMiddleware:
             await self.app(scope, receive, send_wrapper)
         finally:
             elapsed = round((time.monotonic() - t0) * 1000, 1)
-            # Ne pas logger les health checks pour éviter le bruit
-            if path not in ("/health",):
-                logger.info("%s %s → %s (%.0fms)", method, path, status_code, elapsed)
+            # Skip health/metrics probes to reduce noise
+            if path not in self._QUIET_PATHS:
+                token_info = current_token_info.get()
+                entry = {
+                    "request_id": current_request_id.get(),
+                    "method": method,
+                    "path": path,
+                    "status": status_code,
+                    "latency_ms": elapsed,
+                }
+                if token_info:
+                    entry["client"] = token_info.get("client_name", "anonymous")
+                client = scope.get("client")
+                if client:
+                    entry["client_ip"] = client[0]
+                logger.info(json.dumps(entry, ensure_ascii=False))
 
 
 class StaticFilesMiddleware:
@@ -191,10 +210,10 @@ class StaticFilesMiddleware:
 
     def __init__(self, app):
         import os
+
         self.app = app
         self._static_dir = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)),
-            "static"
+            os.path.dirname(os.path.dirname(__file__)), "static"
         )
 
     async def __call__(self, scope, receive, send):
@@ -217,7 +236,7 @@ class StaticFilesMiddleware:
 
         # Fichiers statiques (CSS, JS, images)
         if path.startswith("/static/"):
-            rel_path = path[len("/static/"):]
+            rel_path = path[len("/static/") :]
             if ".." not in rel_path and rel_path:
                 ct = self._guess_content_type(rel_path)
                 await self._serve_file(send, rel_path, ct)
@@ -230,14 +249,14 @@ class StaticFilesMiddleware:
 
         # API REST — Info d'un espace
         if path.startswith("/api/space/") and method == "GET":
-            space_id = path[len("/api/space/"):]
+            space_id = path[len("/api/space/") :]
             if space_id and "/" not in space_id:
                 await self._api_space_info(send, space_id)
                 return
 
         # API REST — Notes live
         if path.startswith("/api/live/") and method == "GET":
-            space_id = path[len("/api/live/"):]
+            space_id = path[len("/api/live/") :]
             if space_id and "/" not in space_id:
                 qs = scope.get("query_string", b"").decode()
                 await self._api_live_notes(send, space_id, qs)
@@ -245,7 +264,7 @@ class StaticFilesMiddleware:
 
         # API REST — Bank (liste ou fichier)
         if path.startswith("/api/bank/") and method == "GET":
-            remainder = path[len("/api/bank/"):]
+            remainder = path[len("/api/bank/") :]
             parts = remainder.split("/", 1)
             if len(parts) == 1 and parts[0]:
                 await self._api_bank_list(send, parts[0])
@@ -260,27 +279,93 @@ class StaticFilesMiddleware:
     # ─────────────────── Health Check ───────────────────
 
     async def _handle_health(self, send):
-        """Endpoint /health — réponse JSON simple pour les healthchecks."""
+        """
+        Endpoint /health — probes S3 and LLMaaS connectivity.
+
+        Returns 200 + {"status": "healthy"} when all dependencies are reachable,
+        200 + {"status": "degraded"} when some are down,
+        or 503 + {"status": "unhealthy"} when critical deps fail.
+        """
         import json
+        import time
         from pathlib import Path
 
         version_file = Path(__file__).parent.parent.parent.parent / "VERSION"
         version = version_file.read_text().strip() if version_file.exists() else "dev"
 
-        body = json.dumps({
-            "status": "healthy",
+        services = {}
+
+        # ── Probe S3 (critical) ──────────────────────────────
+        try:
+            from ..core.storage import get_storage
+
+            storage = get_storage()
+            services["s3"] = await storage.test_connection()
+        except Exception as e:
+            services["s3"] = {"status": "error", "message": str(e)}
+
+        # ── Probe LLMaaS ─────────────────────────────────────
+        try:
+            from ..config import get_settings
+
+            settings = get_settings()
+            if settings.llmaas_api_url and settings.llmaas_api_key:
+                from openai import AsyncOpenAI
+
+                t0 = time.monotonic()
+                client = AsyncOpenAI(
+                    base_url=settings.llmaas_api_url,
+                    api_key=settings.llmaas_api_key,
+                    timeout=5,
+                )
+                models = await client.models.list()
+                latency = round((time.monotonic() - t0) * 1000, 1)
+                model_ids = [m.id for m in models.data]
+                services["llmaas"] = {
+                    "status": "ok",
+                    "model": settings.llmaas_model,
+                    "model_available": settings.llmaas_model in model_ids,
+                    "latency_ms": latency,
+                }
+            else:
+                services["llmaas"] = {
+                    "status": "warning",
+                    "message": "LLMaaS non configuré",
+                }
+        except Exception as e:
+            services["llmaas"] = {"status": "error", "message": str(e)}
+
+        # ── Global status ─────────────────────────────────────
+        statuses = [s.get("status", "error") for s in services.values()]
+        if all(s == "ok" for s in statuses):
+            overall = "healthy"
+            status_code = 200
+        elif services["s3"].get("status") != "ok":
+            overall = "unhealthy"
+            status_code = 503
+        else:
+            overall = "degraded"
+            status_code = 200
+
+        result = {
+            "status": overall,
             "service": "live-memory",
             "version": version,
             "transport": "streamable-http",
-        }).encode("utf-8")
-        await send({
-            "type": "http.response.start",
-            "status": 200,
-            "headers": [
-                (b"content-type", b"application/json; charset=utf-8"),
-                (b"content-length", str(len(body)).encode()),
-            ],
-        })
+            "services": services,
+        }
+
+        body = json.dumps(result).encode("utf-8")
+        await send(
+            {
+                "type": "http.response.start",
+                "status": status_code,
+                "headers": [
+                    (b"content-type", b"application/json; charset=utf-8"),
+                    (b"content-length", str(len(body)).encode()),
+                ],
+            }
+        )
         await send({"type": "http.response.body", "body": body})
 
     # ─────────────────── API Handlers ───────────────────
@@ -289,6 +374,7 @@ class StaticFilesMiddleware:
         """Liste des espaces."""
         try:
             from ..core.space import get_space_service
+
             # Récupérer les permissions du token si disponibles
             allowed = None
             token_info = current_token_info.get()
@@ -335,7 +421,9 @@ class StaticFilesMiddleware:
                     # VULN-12 fix : masquer le token Graph Memory dans la réponse
                     gm = dict(meta["graph_memory"])
                     if gm.get("token"):
-                        gm["token"] = gm["token"][:8] + "..." if len(gm["token"]) > 8 else "***"
+                        gm["token"] = (
+                            gm["token"][:8] + "..." if len(gm["token"]) > 8 else "***"
+                        )
                     info["graph_memory"] = gm
 
             await self._send_json(send, info)
@@ -376,19 +464,24 @@ class StaticFilesMiddleware:
                 return
 
             from ..core.storage import get_storage
+
             storage = get_storage()
 
             # Vérifier l'existence de l'espace
             if not await storage.exists(f"{space_id}/_meta.json"):
-                await self._send_json(send, {
-                    "status": "not_found",
-                    "message": f"Espace '{space_id}' introuvable"
-                })
+                await self._send_json(
+                    send,
+                    {
+                        "status": "not_found",
+                        "message": f"Espace '{space_id}' introuvable",
+                    },
+                )
                 return
 
             # Lister les fichiers bank
             # VULN-11 fix : utiliser bank_relpath au lieu de split("/")[-1]
             from ..core.storage import bank_relpath
+
             objects = await storage.list_objects(f"{space_id}/bank/")
             files = []
             for obj in objects:
@@ -396,18 +489,23 @@ class StaticFilesMiddleware:
                 if key.endswith(".keep"):
                     continue
                 filename = bank_relpath(key, space_id)
-                files.append({
-                    "filename": filename,
-                    "size": obj.get("Size", 0),
-                    "last_modified": obj.get("LastModified", ""),
-                })
+                files.append(
+                    {
+                        "filename": filename,
+                        "size": obj.get("Size", 0),
+                        "last_modified": obj.get("LastModified", ""),
+                    }
+                )
 
-            await self._send_json(send, {
-                "status": "ok",
-                "space_id": space_id,
-                "files": files,
-                "total": len(files),
-            })
+            await self._send_json(
+                send,
+                {
+                    "status": "ok",
+                    "space_id": space_id,
+                    "files": files,
+                    "total": len(files),
+                },
+            )
         except Exception as e:
             await self._send_json(send, {"status": "error", "message": str(e)}, 500)
 
@@ -422,30 +520,39 @@ class StaticFilesMiddleware:
 
             from ..core.storage import get_storage
             from urllib.parse import unquote
+
             storage = get_storage()
             filename = unquote(filename)
 
             # VULN-09 fix : valider le filename contre path traversal
             if ".." in filename or filename.startswith("/"):
-                await self._send_json(send, {"status": "error", "message": "Nom de fichier invalide"}, 400)
+                await self._send_json(
+                    send, {"status": "error", "message": "Nom de fichier invalide"}, 400
+                )
                 return
 
             key = f"{space_id}/bank/{filename}"
             content = await storage.get(key)
             if content is None:
-                await self._send_json(send, {
-                    "status": "not_found",
-                    "message": f"Fichier '{filename}' introuvable"
-                })
+                await self._send_json(
+                    send,
+                    {
+                        "status": "not_found",
+                        "message": f"Fichier '{filename}' introuvable",
+                    },
+                )
                 return
 
-            await self._send_json(send, {
-                "status": "ok",
-                "space_id": space_id,
-                "filename": filename,
-                "content": content,
-                "size": len(content.encode("utf-8")),
-            })
+            await self._send_json(
+                send,
+                {
+                    "status": "ok",
+                    "space_id": space_id,
+                    "filename": filename,
+                    "content": content,
+                    "size": len(content.encode("utf-8")),
+                },
+            )
         except Exception as e:
             await self._send_json(send, {"status": "error", "message": str(e)}, 500)
 
@@ -454,50 +561,58 @@ class StaticFilesMiddleware:
     async def _send_json(self, send, data: dict, status: int = 200):
         """Envoie une réponse JSON."""
         import json
+
         body = json.dumps(data, ensure_ascii=False, default=str).encode("utf-8")
-        await send({
-            "type": "http.response.start",
-            "status": status,
-            "headers": [
-                (b"content-type", b"application/json; charset=utf-8"),
-                (b"content-length", str(len(body)).encode()),
-                # VULN-17 fix : CORS supprimé — l'interface web est servie
-                # par le même serveur (même origine), pas besoin de CORS.
-                # Les agents MCP utilisent /mcp, pas /api/*.
-            ],
-        })
+        await send(
+            {
+                "type": "http.response.start",
+                "status": status,
+                "headers": [
+                    (b"content-type", b"application/json; charset=utf-8"),
+                    (b"content-length", str(len(body)).encode()),
+                    # VULN-17 fix : CORS supprimé — l'interface web est servie
+                    # par le même serveur (même origine), pas besoin de CORS.
+                    # Les agents MCP utilisent /mcp, pas /api/*.
+                ],
+            }
+        )
         await send({"type": "http.response.body", "body": body})
 
     async def _serve_file(self, send, filename: str, content_type: str):
         """Sert un fichier statique."""
         import os
+
         filepath = os.path.join(self._static_dir, filename)
 
         if not os.path.exists(filepath):
             body = f"<h1>404 Not Found</h1><p>{filename}</p>".encode()
-            await send({
-                "type": "http.response.start",
-                "status": 404,
-                "headers": [
-                    (b"content-type", b"text/html"),
-                    (b"content-length", str(len(body)).encode()),
-                ],
-            })
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 404,
+                    "headers": [
+                        (b"content-type", b"text/html"),
+                        (b"content-length", str(len(body)).encode()),
+                    ],
+                }
+            )
             await send({"type": "http.response.body", "body": body})
             return
 
         with open(filepath, "rb") as f:
             body = f.read()
 
-        await send({
-            "type": "http.response.start",
-            "status": 200,
-            "headers": [
-                (b"content-type", content_type.encode()),
-                (b"content-length", str(len(body)).encode()),
-                (b"cache-control", b"no-cache"),
-            ],
-        })
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [
+                    (b"content-type", content_type.encode()),
+                    (b"content-length", str(len(body)).encode()),
+                    (b"cache-control", b"no-cache"),
+                ],
+            }
+        )
         await send({"type": "http.response.body", "body": body})
 
     @staticmethod

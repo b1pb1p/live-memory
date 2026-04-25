@@ -184,16 +184,16 @@ curl -s http://localhost:8080/health
 
 ```bash
 # Install dependencies
-pip install -r requirements.txt
+uv pip install -e .
 
 # Run server
-cd src && python -m live_mem
+python -m live_mem
 ```
 
 ### 4. Install CLI (optional)
 
 ```bash
-pip install click rich prompt-toolkit mcp[cli]>=1.8.0
+uv pip install -e .
 ```
 
 ### 5. Verify Installation
@@ -645,8 +645,9 @@ live-memory/
 ├── DESIGN/live-mem/           # 9 architecture documents
 ├── docker-compose.yml
 ├── Dockerfile
-├── requirements.txt
-├── VERSION                    # 1.3.0
+├── pyproject.toml             # Dependencies & project config (uv)
+├── uv.lock                    # uv lockfile
+├── VERSION                    # 1.4.1
 ├── CHANGELOG.md
 └── FAQ.md
 ```

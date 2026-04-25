@@ -22,7 +22,6 @@ Usage :
     await storage.delete("spaces/my-space/live/old-note.md")
 """
 
-import sys
 import json
 import asyncio
 from typing import Optional
@@ -35,6 +34,7 @@ from botocore.exceptions import ClientError
 from ..config import get_settings
 
 import logging
+
 logger = logging.getLogger("live_mem.storage")
 
 
@@ -59,12 +59,12 @@ class StorageService:
         # sinon on obtient XAmzContentSHA256Mismatch.
         config_v2 = Config(
             region_name=settings.s3_region_name,
-            signature_version='s3',                 # SigV2 legacy
-            s3={'addressing_style': 'path'},        # Path-style obligatoire CT
-            retries={'max_attempts': 3, 'mode': 'adaptive'},
+            signature_version="s3",  # SigV2 legacy
+            s3={"addressing_style": "path"},  # Path-style obligatoire CT
+            retries={"max_attempts": 3, "mode": "adaptive"},
         )
         self._client_v2 = boto3.client(
-            's3',
+            "s3",
             endpoint_url=settings.s3_endpoint_url,
             aws_access_key_id=settings.s3_access_key_id,
             aws_secret_access_key=settings.s3_secret_access_key,
@@ -76,23 +76,26 @@ class StorageService:
         # sinon on obtient 403 Forbidden ou SignatureDoesNotMatch.
         config_v4 = Config(
             region_name=settings.s3_region_name,
-            signature_version='s3v4',
+            signature_version="s3v4",
             s3={
-                'addressing_style': 'path',         # Path-style obligatoire CT
-                'payload_signing_enabled': False,    # Optimisation Dell ECS
+                "addressing_style": "path",  # Path-style obligatoire CT
+                "payload_signing_enabled": False,  # Optimisation Dell ECS
             },
-            retries={'max_attempts': 3, 'mode': 'adaptive'},
+            retries={"max_attempts": 3, "mode": "adaptive"},
         )
         self._client_v4 = boto3.client(
-            's3',
+            "s3",
             endpoint_url=settings.s3_endpoint_url,
             aws_access_key_id=settings.s3_access_key_id,
             aws_secret_access_key=settings.s3_secret_access_key,
             config=config_v4,
         )
 
-        logger.info("StorageService initialisé — bucket=%s endpoint=%s",
-                     self.bucket, self._endpoint)
+        logger.info(
+            "StorageService initialisé — bucket=%s endpoint=%s",
+            self.bucket,
+            self._endpoint,
+        )
 
     # ─────────────────────────────────────────────────────────────
     # Helpers async — wrappent les appels synchrones boto3
@@ -107,7 +110,9 @@ class StorageService:
     # PUT — Écriture (SigV2)
     # ─────────────────────────────────────────────────────────────
 
-    async def put(self, key: str, content: str, content_type: str = "text/plain; charset=utf-8") -> None:
+    async def put(
+        self, key: str, content: str, content_type: str = "text/plain; charset=utf-8"
+    ) -> None:
         """
         Écrit un objet sur S3.
 
@@ -120,7 +125,7 @@ class StorageService:
             self._client_v2.put_object,
             Bucket=self.bucket,
             Key=key,
-            Body=content.encode('utf-8'),
+            Body=content.encode("utf-8"),
             ContentType=content_type,
         )
 
@@ -156,10 +161,10 @@ class StorageService:
                 Key=key,
             )
             # response['Body'] est un StreamingBody, on le lit dans l'executor
-            body = await self._run(response['Body'].read)
-            return body.decode('utf-8')
+            body = await self._run(response["Body"].read)
+            return body.decode("utf-8")
         except ClientError as e:
-            if e.response['Error']['Code'] in ('NoSuchKey', '404'):
+            if e.response["Error"]["Code"] in ("NoSuchKey", "404"):
                 return None
             raise
 
@@ -242,38 +247,40 @@ class StorageService:
 
         while True:
             params = {
-                'Bucket': self.bucket,
-                'Prefix': prefix,
-                'MaxKeys': 1000,
+                "Bucket": self.bucket,
+                "Prefix": prefix,
+                "MaxKeys": 1000,
             }
             if continuation_token:
-                params['ContinuationToken'] = continuation_token
+                params["ContinuationToken"] = continuation_token
 
             response = await self._run(
                 self._client_v4.list_objects_v2,
                 **params,
             )
 
-            contents = response.get('Contents', [])
+            contents = response.get("Contents", [])
             for obj in contents:
-                all_objects.append({
-                    'Key': obj['Key'],
-                    'Size': obj.get('Size', 0),
-                    'LastModified': obj.get('LastModified', ''),
-                })
+                all_objects.append(
+                    {
+                        "Key": obj["Key"],
+                        "Size": obj.get("Size", 0),
+                        "LastModified": obj.get("LastModified", ""),
+                    }
+                )
 
                 # Limite atteinte ?
                 if max_keys > 0 and len(all_objects) >= max_keys:
                     return all_objects[:max_keys]
 
             # Pagination : continuer si tronqué
-            if not response.get('IsTruncated', False):
+            if not response.get("IsTruncated", False):
                 break
-            continuation_token = response.get('NextContinuationToken')
+            continuation_token = response.get("NextContinuationToken")
 
         return all_objects
 
-    async def list_prefixes(self, prefix: str, delimiter: str = '/') -> list[str]:
+    async def list_prefixes(self, prefix: str, delimiter: str = "/") -> list[str]:
         """
         Liste les "dossiers" (préfixes communs) sous un préfixe S3.
 
@@ -291,26 +298,26 @@ class StorageService:
 
         while True:
             params = {
-                'Bucket': self.bucket,
-                'Prefix': prefix,
-                'Delimiter': delimiter,
-                'MaxKeys': 1000,
+                "Bucket": self.bucket,
+                "Prefix": prefix,
+                "Delimiter": delimiter,
+                "MaxKeys": 1000,
             }
             if continuation_token:
-                params['ContinuationToken'] = continuation_token
+                params["ContinuationToken"] = continuation_token
 
             response = await self._run(
                 self._client_v4.list_objects_v2,
                 **params,
             )
 
-            common_prefixes = response.get('CommonPrefixes', [])
+            common_prefixes = response.get("CommonPrefixes", [])
             for cp in common_prefixes:
-                all_prefixes.append(cp['Prefix'])
+                all_prefixes.append(cp["Prefix"])
 
-            if not response.get('IsTruncated', False):
+            if not response.get("IsTruncated", False):
                 break
-            continuation_token = response.get('NextContinuationToken')
+            continuation_token = response.get("NextContinuationToken")
 
         return all_prefixes
 
@@ -336,7 +343,7 @@ class StorageService:
             )
             return True
         except ClientError as e:
-            if e.response['Error']['Code'] in ('404', 'NoSuchKey'):
+            if e.response["Error"]["Code"] in ("404", "NoSuchKey"):
                 return False
             raise
 
@@ -361,20 +368,22 @@ class StorageService:
         results = []
 
         for obj in objects:
-            key = obj['Key']
+            key = obj["Key"]
 
             # Exclure les sentinelles
-            if exclude_keep and key.endswith('.keep'):
+            if exclude_keep and key.endswith(".keep"):
                 continue
 
             content = await self.get(key)
             if content is not None:
-                results.append({
-                    'key': key,
-                    'content': content,
-                    'size': obj['Size'],
-                    'last_modified': str(obj.get('LastModified', '')),
-                })
+                results.append(
+                    {
+                        "key": key,
+                        "content": content,
+                        "size": obj["Size"],
+                        "last_modified": str(obj.get("LastModified", "")),
+                    }
+                )
 
         return results
 
@@ -388,7 +397,7 @@ class StorageService:
             source_key: Clé source
             dest_key: Clé destination
         """
-        copy_source = {'Bucket': self.bucket, 'Key': source_key}
+        copy_source = {"Bucket": self.bucket, "Key": source_key}
         await self._run(
             self._client_v2.copy_object,
             CopySource=copy_source,
@@ -410,6 +419,7 @@ class StorageService:
             {"status": "ok", "bucket": "...", "latency_ms": ...} ou erreur
         """
         import time
+
         t0 = time.monotonic()
         try:
             await self._run(
@@ -467,7 +477,7 @@ def bank_relpath(s3_key: str, space_id: str) -> str:
     """
     prefix = f"{space_id}/bank/"
     if s3_key.startswith(prefix):
-        relpath = s3_key[len(prefix):]
+        relpath = s3_key[len(prefix) :]
         if relpath:
             return relpath
     # Fallback : juste le dernier segment (rétrocompat)

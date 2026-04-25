@@ -31,18 +31,18 @@ from .storage import get_storage
 # ─────────────────────────────────────────────────────────────
 
 # VULN-07 fix : limites de taille pour les contenus
-MAX_NOTE_CONTENT_SIZE = 100_000    # 100K caractères max par note
-MAX_LIVE_READ_LIMIT = 500          # VULN-10 fix : limite max pour live_read
+MAX_NOTE_CONTENT_SIZE = 100_000  # 100K caractères max par note
+MAX_LIVE_READ_LIMIT = 500  # VULN-10 fix : limite max pour live_read
 
 # Catégories de notes autorisées (cf. MCP_TOOLS_SPEC.md)
 VALID_CATEGORIES = [
-    "observation",   # Constat factuel ("Le build passe")
-    "decision",      # Choix technique ("On part sur S3")
-    "todo",          # Tâche à faire ("Implémenter le backup")
-    "insight",       # Pattern découvert ("Le pattern X marche")
-    "question",      # Question ouverte ("Supporter le CSV ?")
-    "progress",      # Avancement ("Module auth : 80%")
-    "issue",         # Problème, bug ("Timeout LLM > 60s")
+    "observation",  # Constat factuel ("Le build passe")
+    "decision",  # Choix technique ("On part sur S3")
+    "todo",  # Tâche à faire ("Implémenter le backup")
+    "insight",  # Pattern découvert ("Le pattern X marche")
+    "question",  # Question ouverte ("Supporter le CSV ?")
+    "progress",  # Avancement ("Module auth : 80%")
+    "issue",  # Problème, bug ("Timeout LLM > 60s")
 ]
 
 
@@ -111,6 +111,7 @@ class LiveService:
 
         # Agent = client_name du token (toujours, jamais de paramètre libre)
         from ..auth.context import get_current_agent_name
+
         agent = get_current_agent_name()
 
         # Construire le nom de fichier unique
@@ -123,10 +124,7 @@ class LiveService:
         filename = f"{timestamp_str}_{safe_agent}_{category}_{uuid8}.md"
 
         # Parser les tags depuis la chaîne CSV
-        tag_list = (
-            [t.strip() for t in tags.split(",") if t.strip()]
-            if tags else []
-        )
+        tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
 
         # Construire le front-matter YAML + contenu Markdown
         front_matter = (
@@ -278,6 +276,7 @@ class LiveService:
 # ─────────────────────────────────────────────────────────────
 # Helpers internes
 # ─────────────────────────────────────────────────────────────
+
 
 def _parse_note(key: str, raw_content: str) -> Optional[dict]:
     """

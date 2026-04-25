@@ -32,6 +32,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 # Tests unitaires
 # ─────────────────────────────────────────────────────────────
 
+
 class TestGetMaxSizeForFile(unittest.TestCase):
     """Test _get_max_size_for_file() : limites par type de fichier."""
 
@@ -54,6 +55,7 @@ class TestGetMaxSizeForFile(unittest.TestCase):
             settings.bank_progress_max_size = 20480
             mock_settings.return_value = settings
             from live_mem.core.consolidator import ConsolidatorService
+
             self.svc = ConsolidatorService()
 
     def test_active_context(self):
@@ -102,6 +104,7 @@ class TestDynamicMaxTokens(unittest.TestCase):
             settings.bank_progress_max_size = 20480
             mock_settings.return_value = settings
             from live_mem.core.consolidator import ConsolidatorService
+
             self.svc = ConsolidatorService()
 
     def test_small_input_full_budget(self):
@@ -159,6 +162,7 @@ class TestCompactBankIfNeeded(unittest.TestCase):
             settings.bank_progress_max_size = 20480
             mock_settings.return_value = settings
             from live_mem.core.consolidator import ConsolidatorService
+
             self.svc = ConsolidatorService()
 
     def test_small_bank_no_compact(self):
@@ -219,13 +223,16 @@ class TestCompactSingleFile(unittest.TestCase):
             settings.bank_progress_max_size = 20480
             mock_settings.return_value = settings
             from live_mem.core.consolidator import ConsolidatorService
+
             self.svc = ConsolidatorService()
 
     def test_active_context_prompt_contains_generic_instructions(self):
         """Le prompt de compaction contient les instructions génériques et le nom du fichier."""
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = "# activeContext.md\n\n## Focus\nCompacted"
+        mock_response.choices[
+            0
+        ].message.content = "# activeContext.md\n\n## Focus\nCompacted"
         self.svc._client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         result = asyncio.run(
@@ -236,7 +243,9 @@ class TestCompactSingleFile(unittest.TestCase):
 
         self.svc._client.chat.completions.create.assert_called_once()
         call_args = self.svc._client.chat.completions.create.call_args
-        prompt = call_args.kwargs.get("messages", call_args[1].get("messages", []))[0]["content"]
+        prompt = call_args.kwargs.get("messages", call_args[1].get("messages", []))[0][
+            "content"
+        ]
 
         # Vérifier les instructions génériques (v1.4.0+)
         self.assertIn("redondantes", prompt)
@@ -258,8 +267,9 @@ class TestCompactSingleFile(unittest.TestCase):
         )
 
         call_args = self.svc._client.chat.completions.create.call_args
-        prompt = call_args.kwargs.get("messages", call_args[1].get("messages", []))[0]["content"]
-        # Instructions génériques (v1.4.0+ : plus de prompts spécifiques par fichier)
+        prompt = call_args.kwargs.get("messages", call_args[1].get("messages", []))[0][
+            "content"
+        ]
         self.assertIn("obsolètes", prompt)
         self.assertIn("jalon", prompt)
         self.assertIsNotNone(result)
@@ -271,9 +281,7 @@ class TestCompactSingleFile(unittest.TestCase):
         )
 
         result = asyncio.run(
-            self.svc._compact_single_file(
-                "test.md", "content", 15360, "rules"
-            )
+            self.svc._compact_single_file("test.md", "content", 15360, "rules")
         )
         self.assertIsNone(result)
 
@@ -281,9 +289,9 @@ class TestCompactSingleFile(unittest.TestCase):
         """Les balises <think> sont nettoyées de la réponse."""
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = (
-            "<think>réflexion interne</think>\n# Compacted\n\nContent"
-        )
+        mock_response.choices[
+            0
+        ].message.content = "<think>réflexion interne</think>\n# Compacted\n\nContent"
         self.svc._client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         result = asyncio.run(
@@ -314,16 +322,19 @@ class TestCompactBank(unittest.TestCase):
             settings.bank_progress_max_size = 20480
             mock_settings.return_value = settings
             from live_mem.core.consolidator import ConsolidatorService
+
             self.svc = ConsolidatorService()
 
     def test_dry_run_no_writes(self):
         """En dry_run, aucune écriture S3."""
         mock_storage = MagicMock()
         mock_storage.get_json = AsyncMock(return_value={"created_at": "2026-01-01"})
-        mock_storage.list_and_get = AsyncMock(return_value=[
-            {"key": "test/bank/activeContext.md", "content": "x" * 50000},
-            {"key": "test/bank/progress.md", "content": "x" * 5000},
-        ])
+        mock_storage.list_and_get = AsyncMock(
+            return_value=[
+                {"key": "test/bank/activeContext.md", "content": "x" * 50000},
+                {"key": "test/bank/progress.md", "content": "x" * 5000},
+            ]
+        )
         mock_storage.get = AsyncMock(return_value="# Rules")
         mock_storage.put = AsyncMock()
 
@@ -341,9 +352,11 @@ class TestCompactBank(unittest.TestCase):
         """En mode apply, les fichiers compactés sont écrits."""
         mock_storage = MagicMock()
         mock_storage.get_json = AsyncMock(return_value={"created_at": "2026-01-01"})
-        mock_storage.list_and_get = AsyncMock(return_value=[
-            {"key": "test/bank/activeContext.md", "content": "x" * 50000},
-        ])
+        mock_storage.list_and_get = AsyncMock(
+            return_value=[
+                {"key": "test/bank/activeContext.md", "content": "x" * 50000},
+            ]
+        )
         mock_storage.get = AsyncMock(return_value="# Rules")
         mock_storage.put = AsyncMock()
 
@@ -373,11 +386,13 @@ class TestCompactBank(unittest.TestCase):
         """Le rapport contient les détails par fichier."""
         mock_storage = MagicMock()
         mock_storage.get_json = AsyncMock(return_value={"created_at": "2026-01-01"})
-        mock_storage.list_and_get = AsyncMock(return_value=[
-            {"key": "s/bank/activeContext.md", "content": "x" * 20000},  # > 15360
-            {"key": "s/bank/progress.md", "content": "x" * 5000},       # < 15360
-            {"key": "s/bank/techContext.md", "content": "x" * 3000},     # < 15360
-        ])
+        mock_storage.list_and_get = AsyncMock(
+            return_value=[
+                {"key": "s/bank/activeContext.md", "content": "x" * 20000},  # > 15360
+                {"key": "s/bank/progress.md", "content": "x" * 5000},  # < 15360
+                {"key": "s/bank/techContext.md", "content": "x" * 3000},  # < 15360
+            ]
+        )
         mock_storage.get = AsyncMock(return_value="")
 
         with patch("live_mem.core.consolidator.get_storage", return_value=mock_storage):
@@ -397,6 +412,7 @@ class TestCompactBank(unittest.TestCase):
 # Tests E2E (nécessitent un serveur MCP Live Memory)
 # ─────────────────────────────────────────────────────────────
 
+
 class TestE2EBankCompact(unittest.TestCase):
     """Tests E2E — nécessitent MCP_URL et MCP_TOKEN dans l'environnement."""
 
@@ -411,12 +427,15 @@ class TestE2EBankCompact(unittest.TestCase):
         """Appel MCP synchrone via HTTP."""
         import json
         import urllib.request
-        payload = json.dumps({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "tools/call",
-            "params": {"name": tool_name, "arguments": arguments},
-        }).encode()
+
+        payload = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": tool_name, "arguments": arguments},
+            }
+        ).encode()
         req = urllib.request.Request(
             f"{self.url}/mcp",
             data=payload,
@@ -450,7 +469,9 @@ class TestE2EBankCompact(unittest.TestCase):
         result = self._call_mcp("space_info", {"space_id": space_id})
         info = json.loads(result["result"]["content"][0]["text"])
         bank_size = info.get("bank", {}).get("total_size", 0)
-        print(f"  → Bank size: {bank_size} bytes ({len(info.get('bank', {}).get('files', []))} files)")
+        print(
+            f"  → Bank size: {bank_size} bytes ({len(info.get('bank', {}).get('files', []))} files)"
+        )
 
         self.assertIn("bank", info)
         self.assertGreaterEqual(bank_size, 0)
@@ -492,8 +513,8 @@ if __name__ == "__main__":
     failures = len(result.failures) + len(result.errors)
     skipped = len(result.skipped)
     passed = total - failures - skipped
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Bank Compact Tests: {passed}/{total} PASS, {failures} FAIL, {skipped} SKIP")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     sys.exit(0 if failures == 0 else 1)

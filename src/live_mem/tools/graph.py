@@ -22,6 +22,7 @@ Voir core/graph_bridge.py pour la logique métier et le client MCP Streamable HT
 from typing import Annotated
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 from pydantic import Field
 
 
@@ -36,13 +37,30 @@ def register(mcp: FastMCP) -> int:
         Nombre d'outils enregistrés (4)
     """
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=True))
     async def graph_connect(
-        space_id: Annotated[str, Field(description="Identifiant du space live-memory à connecter")],
-        url: Annotated[str, Field(description="URL de Graph Memory (ex: 'http://localhost:8080/mcp' ou 'http://localhost:8080')")],
-        token: Annotated[str, Field(description="Bearer token pour l'authentification Graph Memory")],
-        memory_id: Annotated[str, Field(description="Identifiant de la mémoire cible dans Graph Memory")],
-        ontology: Annotated[str, Field(default="general", description="Ontologie pour l'extraction : general|legal|cloud|managed-services|presales")] = "general",
+        space_id: Annotated[
+            str, Field(description="Identifiant du space live-memory à connecter")
+        ],
+        url: Annotated[
+            str,
+            Field(
+                description="URL de Graph Memory (ex: 'http://localhost:8080/mcp' ou 'http://localhost:8080')"
+            ),
+        ],
+        token: Annotated[
+            str, Field(description="Bearer token pour l'authentification Graph Memory")
+        ],
+        memory_id: Annotated[
+            str, Field(description="Identifiant de la mémoire cible dans Graph Memory")
+        ],
+        ontology: Annotated[
+            str,
+            Field(
+                default="general",
+                description="Ontologie pour l'extraction : general|legal|cloud|managed-services|presales",
+            ),
+        ] = "general",
     ) -> dict:
         """
         Connecte un space Live Memory à une instance Graph Memory.
@@ -87,11 +105,14 @@ def register(mcp: FastMCP) -> int:
             )
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "graph")
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=True))
     async def graph_push(
-        space_id: Annotated[str, Field(description="Identifiant du space live-memory à synchroniser")],
+        space_id: Annotated[
+            str, Field(description="Identifiant du space live-memory à synchroniser")
+        ],
     ) -> dict:
         """
         Pousse la Memory Bank dans Graph Memory.
@@ -128,9 +149,10 @@ def register(mcp: FastMCP) -> int:
             return await get_graph_bridge().push(space_id)
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "graph")
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     async def graph_status(
         space_id: Annotated[str, Field(description="Identifiant du space live-memory")],
     ) -> dict:
@@ -159,11 +181,14 @@ def register(mcp: FastMCP) -> int:
             return await get_graph_bridge().status(space_id)
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "graph")
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=True))
     async def graph_disconnect(
-        space_id: Annotated[str, Field(description="Identifiant du space live-memory à déconnecter")],
+        space_id: Annotated[
+            str, Field(description="Identifiant du space live-memory à déconnecter")
+        ],
     ) -> dict:
         """
         Déconnecte un space de Graph Memory.
@@ -196,6 +221,7 @@ def register(mcp: FastMCP) -> int:
             return await get_graph_bridge().disconnect(space_id)
         except Exception as e:
             from ..auth.context import safe_error
+
             return safe_error(e, "graph")
 
     return 4  # Nombre d'outils enregistrés
