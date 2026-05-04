@@ -1,0 +1,28 @@
+# docker-compose.nowaf.yml — Service MCP seul (sans WAF, sans MinIO)
+#
+# Usage :
+#   docker compose -f docker-compose.nowaf.yml up -d
+#   docker compose -f docker-compose.nowaf.yml logs -f
+#   docker compose -f docker-compose.nowaf.yml down
+#
+# Le service MCP est exposé directement sur MCP_SERVER_PORT (défaut: 8002).
+# S3 = remote via .env (Cloud Temple ou autre).
+#
+services:
+  live-mem-service:
+    build: .
+    image: live-memory:latest
+    ports:
+      - "${MCP_SERVER_PORT:-8002}:${MCP_SERVER_PORT:-8002}"
+    env_file: .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:${MCP_SERVER_PORT:-8002}/health', timeout=2)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+networks:
+  default:
+    driver: bridge
