@@ -2,6 +2,8 @@
 
 > **Mémoire de travail partagée pour agents IA collaboratifs**
 
+[![CI](https://github.com/Cloud-Temple/live-memory/actions/workflows/build.yml/badge.svg)](https://github.com/Cloud-Temple/live-memory/actions/workflows/build.yml)
+[![Docker](https://img.shields.io/badge/ghcr.io-cloud--temple%2Flive--memory-blue?logo=docker)](https://ghcr.io/cloud-temple/live-memory)
 [![Version](https://img.shields.io/badge/version-1.7.1-blue.svg)]()
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)]()
 [![MCP](https://img.shields.io/badge/protocol-MCP-purple.svg)]()
@@ -165,7 +167,35 @@ cp .env.example .env
 
 Éditez `.env` avec vos valeurs (voir section [Configuration](#-configuration)).
 
-### 3a. Démarrage Docker (recommandé)
+### 3a. Démarrage avec l'image pré-construite (recommandé)
+
+Des images Docker multi-arch (amd64 / arm64) sont publiées automatiquement par la CI sur GHCR.
+
+| Tag | Description |
+|-----|-------------|
+| `latest` | Dernière version stable |
+| `1.7.0` | Version fixée |
+| `main` | Dernier commit sur `main` |
+
+**Avec WAF (déploiement normal — port 8080) :**
+
+```bash
+# Éditez .env avec vos valeurs, puis :
+IMAGE_TAG=latest docker compose up -d
+curl -s http://localhost:8080/health
+```
+
+**Sans WAF (dev / test — port 8002 direct) :**
+
+```bash
+# Éditez .env avec vos valeurs, puis :
+IMAGE_TAG=latest docker compose -f docker-compose.nowaf.yml up -d
+curl -s http://localhost:8002/health
+```
+
+> **Note** : pour utiliser l'image distante, remplacez `build: .` par `image: ghcr.io/cloud-temple/live-memory:${IMAGE_TAG:-latest}` dans votre fichier compose.
+
+### 3b. Démarrage Docker avec build local
 
 ```bash
 # Construire les images (WAF + serveur MCP)
@@ -181,7 +211,7 @@ docker compose ps
 curl -s http://localhost:8080/health
 ```
 
-### 3b. Démarrage local (développement)
+### 3c. Démarrage local (développement)
 
 ```bash
 # Installer les dépendances
@@ -209,10 +239,11 @@ python scripts/test_recette.py
 
 ### Ports exposés
 
-| Service    | Port   | Description                                |
-| ---------- | ------ | ------------------------------------------ |
-| **WAF**    | `8080` | Seul port exposé — Caddy WAF → Live Memory |
-| MCP Server | `8002` | Réseau Docker interne uniquement           |
+| Service                 | Port   | Description                                                              |
+| ----------------------- | ------ | ------------------------------------------------------------------------ |
+| **WAF**                 | `8080` | Seul port exposé (mode normal) — Caddy WAF → Live Memory                 |
+| **MCP Server (no WAF)** | `8002` | Accessible directement via `docker-compose.nowaf.yml` (dev / test)       |
+| MCP Server              | `8002` | Réseau Docker interne uniquement (mode normal)                           |
 
 ---
 
@@ -636,6 +667,7 @@ live-memory/
 ├── clinerules.md              # 📋 Template Custom Instructions Cline (copier + personnaliser)
 ├── DESIGN/live-mem/           # 9 documents d'architecture
 ├── docker-compose.yml
+├── docker-compose.nowaf.yml   # Stack sans WAF (dev / test) — port 8002 direct
 ├── Dockerfile
 ├── pyproject.toml             # Dépendances & config projet (uv)
 ├── uv.lock                    # Lockfile uv
