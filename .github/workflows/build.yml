@@ -11,10 +11,7 @@ on:
       - "v*"
 
 env:
-  REGISTRY: ghcr.io
-  # github.repository → "cloud-temple/live-memory"
-  # Image finale    → ghcr.io/cloud-temple/live-memory:<tag>
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: cloudtempleinfra/live-memory
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────
@@ -38,21 +35,23 @@ jobs:
         run: uv run pytest tests/ -v
 
   # ─────────────────────────────────────────────────────────────────────────
-  # Job 2 — Build multi-arch + push GHCR
+  # Job 2 — Build multi-arch + push DockerHub
+  #
+  # Secrets GitHub requis :
+  #   DOCKER_USERNAME : login DockerHub (cloudtempleinfra ou compte perso)
+  #   DOCKER_PASSWORD : Access Token DockerHub (pas le mot de passe compte)
+  #                     → https://hub.docker.com/settings/security
   #
   # Stratégie de tags automatique (via docker/metadata-action) :
-  #   - branche main       → :main
-  #   - branche dev        → :dev
-  #   - branche feature/xx → :feature-xx
-  #   - tag v1.7.0         → :1.7.0  :1.7  :latest
+  #   - branche main       → cloudtempleinfra/live-memory:main
+  #   - branche dev        → cloudtempleinfra/live-memory:dev
+  #   - branche feature/xx → cloudtempleinfra/live-memory:feature-xx
+  #   - tag v1.7.0         → cloudtempleinfra/live-memory:1.7.0  :1.7  :latest
   # ─────────────────────────────────────────────────────────────────────────
   build:
     name: Build & Push Docker Image
     runs-on: ubuntu-latest
     needs: test
-    permissions:
-      contents: read
-      packages: write   # Requis pour pousser vers GHCR
 
     steps:
       - uses: actions/checkout@v4
@@ -64,20 +63,19 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Authentification GHCR — GITHUB_TOKEN suffit, aucun secret à configurer
-      - name: Log in to GHCR
+      # Authentification DockerHub via secrets GitHub
+      - name: Log in to DockerHub
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
       # Génération automatique des tags et labels OCI
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.IMAGE_NAME }}
           tags: |
             # Branches → tag avec le nom de branche (main, dev, feature-xxx, …)
             type=ref,event=branch
