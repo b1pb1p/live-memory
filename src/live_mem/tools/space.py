@@ -252,12 +252,12 @@ def register(mcp: FastMCP) -> int:
         Returns:
             Liste des espaces avec statistiques
         """
-        from ..auth.context import current_token_info
+        from ..auth.context import _get_effective_token_info
         from ..core.space import get_space_service
 
         try:
-            # Récupérer les space_ids autorisés depuis le token
-            token_info = current_token_info.get()
+            # Récupérer les space_ids autorisés depuis le token (données fraîches)
+            token_info = _get_effective_token_info()
             if token_info is None:
                 return {"status": "error", "message": "Authentification requise"}
 

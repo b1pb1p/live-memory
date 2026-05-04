@@ -572,8 +572,10 @@ def show_token_list(result: dict):
         name = t.get("name", "?")
         if t.get("revoked"):
             name = f"[dim strikethrough]{name}[/dim strikethrough]"
-        # Hash complet (sans troncature supplémentaire)
-        token_hash = t.get("hash", "?")
+        # Hash tronqué à 24 chars min (suffisant pour token update/revoke
+        # qui exigent 16 chars min). Le hash complet est disponible via --json.
+        raw_hash = t.get("hash", "?")
+        token_hash = raw_hash[:24] + "…" if len(raw_hash) > 24 else raw_hash
         table.add_row(
             name,
             t.get("email", "") or "",

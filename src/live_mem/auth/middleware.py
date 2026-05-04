@@ -17,7 +17,7 @@ import json
 import time
 import logging
 from typing import Optional
-from .context import current_token_info, check_access
+from .context import current_token_info, check_access, update_fresh_token
 from ..config import get_settings
 from ..middleware import current_request_id
 
@@ -96,6 +96,9 @@ class AuthMiddleware:
                 audit_entry["client_ip"] = client[0]
             audit_logger.info(json.dumps(audit_entry, ensure_ascii=False))
             return
+
+        # Mettre à jour le store global (visible par les session tasks MCP)
+        update_fresh_token(token_info)
 
         # Injecter dans le contextvar
         tok = current_token_info.set(token_info)

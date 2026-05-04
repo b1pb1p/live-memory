@@ -43,6 +43,51 @@ current_token_info: ContextVar[Optional[dict]] = ContextVar(
     "current_token_info", default=None
 )
 
+# ─────────────────────────────────────────────────────────────
+# Fresh token store — contourne le bug des contextvars MCP
+# ─────────────────────────────────────────────────────────────
+# Le MCP Streamable HTTP crée un task anyio par session. Les tool
+# handlers s'exécutent dans ce task, qui a une COPIE FIGÉE du contexte
+# asyncio de l'initialisation. Les contextvars du middleware (mis à jour
+# à chaque POST) ne sont donc PAS visibles par les tools.
+#
+# Ce store global est mis à jour par le middleware à chaque requête HTTP,
+# et lu par les fonctions check_xxx() pour obtenir les données fraîches
+# (permissions, space_ids) même depuis le session task.
+_fresh_token_store: dict[str, dict] = {}
+
+
+def update_fresh_token(token_info: dict) -> None:
+    """Met à jour le store global avec les infos fraîches du token.
+
+    Appelé par AuthMiddleware à chaque requête HTTP validée.
+    Le token_hash sert de clé (un slot par token distinct).
+    """
+    token_hash = token_info.get("token_hash")
+    if token_hash:
+        _fresh_token_store[token_hash] = token_info
+
+
+def _get_effective_token_info() -> Optional[dict]:
+    """Retourne le token_info le plus frais disponible.
+
+    Le contextvar peut être stale (figé à l'initialisation de la session
+    MCP Streamable HTTP). Le store global est mis à jour par le middleware
+    à chaque requête HTTP et contient les données fraîches.
+
+    Priorité : store global (frais) > contextvar (potentiellement stale).
+    """
+    token_info = current_token_info.get()
+    if token_info is None:
+        return None
+
+    # Rafraîchir depuis le store global si disponible
+    token_hash = token_info.get("token_hash")
+    if token_hash and token_hash in _fresh_token_store:
+        return _fresh_token_store[token_hash]
+
+    return token_info
+
 
 def check_access(resource_id: str) -> Optional[dict]:
     """
@@ -51,13 +96,16 @@ def check_access(resource_id: str) -> Optional[dict]:
     Un token peut être restreint à certains space_ids.
     Si allowed_resources est vide → accès à tous les espaces.
 
+    Utilise _get_effective_token_info() pour contourner le bug des
+    contextvars stale dans les sessions MCP Streamable HTTP.
+
     Args:
         resource_id: ID de l'espace à vérifier
 
     Returns:
         None si OK, dict {"status": "error", ...} si refusé
     """
-    token_info = current_token_info.get()
+    token_info = _get_effective_token_info()
 
     # Pas de token → accès refusé
     if token_info is None:
@@ -101,7 +149,7 @@ def check_write_permission() -> Optional[dict]:
     Returns:
         None si OK, dict {"status": "error", ...} si refusé
     """
-    token_info = current_token_info.get()
+    token_info = _get_effective_token_info()
 
     if token_info is None:
         return {"status": "error", "message": "Authentification requise"}
@@ -128,7 +176,7 @@ def check_manage_permission() -> Optional[dict]:
     Returns:
         None si OK, dict {"status": "error", ...} si refusé
     """
-    token_info = current_token_info.get()
+    token_info = _get_effective_token_info()
 
     if token_info is None:
         return {"status": "error", "message": "Authentification requise"}
@@ -153,7 +201,7 @@ def check_admin_permission() -> Optional[dict]:
     Returns:
         None si OK, dict {"status": "error", ...} si refusé
     """
-    token_info = current_token_info.get()
+    token_info = _get_effective_token_info()
 
     if token_info is None:
         return {"status": "error", "message": "Authentification requise"}

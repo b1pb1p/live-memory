@@ -5,6 +5,26 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
 ---
 
+## [1.7.1] — 2026-05-04
+
+### Corrigé
+- **Bug critique : contextvars stale dans les sessions MCP Streamable HTTP** — Les `check_access()`, `check_write_permission()`, `check_manage_permission()` et `check_admin_permission()` lisaient `current_token_info` depuis un contextvar figé à l'initialisation de la session MCP. Le SDK MCP Python crée un task `anyio` long-running par session (`streamable_http_manager.py:243-276`) ; les tool handlers s'exécutent dans ce task avec une copie du contexte asyncio de l'initialisation. Les mises à jour de `space_ids` (via `add_space_to_token` lors de `space_create`) ou de permissions (via `admin_update_token`) étaient invisibles jusqu'au redémarrage de la session MCP.
+  - **Fix** : Ajout d'un `_fresh_token_store` (dict global mutable) dans `auth/context.py`, alimenté par `AuthMiddleware` à chaque requête HTTP. Les fonctions `check_xxx()` utilisent désormais `_get_effective_token_info()` qui priorise le store frais sur le contextvar stale.
+  - **Impact** : les `space_ids` et permissions sont immédiatement visibles après modification, sans reconnexion MCP.
+- **CLI `token list` : hash tronqué inutilisable** — Rich tronquait le hash SHA-256 (73 chars) à ~10 chars (`sha256:f9…`), rendant impossible le copier-coller pour `token update/revoke/delete` (minimum 16 chars requis par `_find_token_by_hash`). Fix : troncature explicite à 24 chars (`sha256:f97fbf7c3b4460ff…`), suffisant pour identifier un token de manière unique. Hash complet toujours disponible via `--json`.
+- **`space_list` : données stale** — Utilisait `current_token_info.get()` directement au lieu de `_get_effective_token_info()`, souffrant du même bug de contextvar stale.
+
+### Fichiers modifiés
+| Fichier | Changements |
+| --- | --- |
+| `src/live_mem/auth/context.py` | +56 lignes : `_fresh_token_store`, `update_fresh_token()`, `_get_effective_token_info()`. Les 4 `check_xxx()` utilisent `_get_effective_token_info()` |
+| `src/live_mem/auth/middleware.py` | `AuthMiddleware.__call__()` : appel `update_fresh_token()` après validation |
+| `src/live_mem/tools/space.py` | `space_list()` : utilise `_get_effective_token_info()` |
+| `scripts/cli/display.py` | `show_token_list()` : hash tronqué à 24 chars au lieu de laisser Rich tronquer |
+| `VERSION`, `__init__.py`, `README.md`, `README.en.md`, `CHANGELOG.md` | Bump 1.7.0 → 1.7.1 |
+
+---
+
 ## [1.7.0] — 2026-04-27
 
 ### Corrigé
