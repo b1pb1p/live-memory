@@ -111,6 +111,21 @@ python scripts/mcp_cli.py token update sha256:363... -p "read,write" -s "live-me
 - `space_ids = []` pour un **non-admin** → **aucun accès** (changed in v1.5.0, avant = tout)
 - `space_ids = []` pour un **admin** → accès à **tout** (inchangé)
 
+À la **création** d'un token via `admin_create_token`, vous pouvez utiliser :
+- `space_ids=""` (défaut) → token "muet" (aucun accès aux espaces existants). La réponse contient un champ `warning_no_access` pour vous le signaler explicitement.
+- `space_ids="a,b,c"` → liste explicite.
+- `space_ids="*"` ou `space_ids="all"` → **snapshot** de tous les espaces existants au moment de la création (pas les futurs spaces, c'est volontaire pour rester aligné avec la sémantique stricte v1.5.0).
+
+### Le hash retourné par `admin_list_tokens` contient `sha256:` — faut-il le passer tel quel ?
+
+Depuis l'issue #11, **les deux formes sont acceptées** par `admin_revoke_token`, `admin_delete_token` et `admin_update_token` :
+```bash
+admin_update_token(token_hash="sha256:f172084ef03...", space_ids="x")  # OK
+admin_update_token(token_hash="f172084ef03...", space_ids="x")          # OK aussi
+```
+
+Le minimum reste 16 caractères hex (8 octets de hash) pour éviter les collisions accidentelles.
+
 ### Que se passe-t-il quand un token crée un nouveau space ?
 
 Le space est **automatiquement ajouté** au `space_ids` du token (via `add_space_to_token()`). Ainsi un token restreint à `["projet-a"]` qui crée `projet-b` se retrouve avec `["projet-a", "projet-b"]`. Pas de deadlock UX.

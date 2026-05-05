@@ -53,7 +53,12 @@ def register(mcp: FastMCP) -> int:
             str,
             Field(
                 default="",
-                description="Espaces autorisés séparés par virgules (vide = tous les espaces)",
+                description=(
+                    "Espaces autorisés, séparés par virgules. Sémantique stricte v1.5.0+ : "
+                    "vide = AUCUN accès aux espaces existants (le token ne peut que "
+                    "créer ses propres nouveaux spaces). Utilisez '*' ou 'all' pour un "
+                    "snapshot des espaces actuels (pas les futurs). Ignoré pour les admins."
+                ),
             ),
         ] = "",
         expires_in_days: Annotated[
@@ -79,11 +84,16 @@ def register(mcp: FastMCP) -> int:
         Args:
             name: Nom descriptif (ex: "agent-cline")
             permissions: "read", "read,write", ou "read,write,admin"
-            space_ids: Espaces autorisés, séparés par virgules (vide = tous)
+            space_ids: Espaces autorisés (séparés par virgules). Sémantique
+                stricte v1.5.0+ : vide = AUCUN accès pour les non-admin.
+                Utilisez "*" ou "all" pour un snapshot des espaces actuels.
+                Voir FAQ.md pour les détails.
             expires_in_days: Durée en jours (0 = jamais)
 
         Returns:
-            Token en clair (à sauvegarder !), permissions, expiration
+            Token en clair (à sauvegarder !), permissions, expiration.
+            Si le token résultant n'a accès à aucun espace existant
+            (et n'est pas admin), un champ `warning_no_access` est ajouté.
         """
         from ..auth.context import check_admin_permission
         from ..core.tokens import get_token_service
@@ -135,7 +145,11 @@ def register(mcp: FastMCP) -> int:
         token_hash: Annotated[
             str,
             Field(
-                description="Hash tronqué du token à révoquer (obtenu via admin_list_tokens)"
+                description=(
+                    "Hash du token à révoquer (obtenu via admin_list_tokens). "
+                    "Préfixe 'sha256:' optionnel — accepte 'sha256:abc...' ou juste 'abc...'. "
+                    "Min 16 caractères hex requis."
+                )
             ),
         ],
     ) -> dict:
@@ -167,7 +181,10 @@ def register(mcp: FastMCP) -> int:
         token_hash: Annotated[
             str,
             Field(
-                description="Hash tronqué du token à supprimer (obtenu via admin_list_tokens)"
+                description=(
+                    "Hash du token à supprimer (obtenu via admin_list_tokens). "
+                    "Préfixe 'sha256:' optionnel. Min 16 caractères hex requis."
+                )
             ),
         ],
     ) -> dict:
@@ -244,14 +261,21 @@ def register(mcp: FastMCP) -> int:
         token_hash: Annotated[
             str,
             Field(
-                description="Hash tronqué du token à modifier (obtenu via admin_list_tokens)"
+                description=(
+                    "Hash du token à modifier (obtenu via admin_list_tokens). "
+                    "Préfixe 'sha256:' optionnel. Min 16 caractères hex requis."
+                )
             ),
         ],
         space_ids: Annotated[
             str,
             Field(
                 default="",
-                description="Nouveaux espaces autorisés séparés par virgules (vide = pas de changement)",
+                description=(
+                    "Nouveaux espaces autorisés, séparés par virgules. "
+                    "Vide = pas de changement. Utilisez '*' ou 'all' pour un "
+                    "snapshot des espaces existants (cohérent avec admin_create_token)."
+                ),
             ),
         ] = "",
         permissions: Annotated[
