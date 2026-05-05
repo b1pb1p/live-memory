@@ -66,7 +66,7 @@ Oui ! `live_read(space_id="mon-projet")` retourne les notes de TOUS les agents. 
 
 ### Quels sont les niveaux de permission ?
 
-Depuis **v1.5.0**, il y a 4 niveaux hiérarchiques :
+Depuis **v1.5.0**, il y a 4 niveaux **hiérarchiques et cumulatifs** :
 
 | Niveau     | Inclut                | Accès                                                                                                                                             |
 | ---------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -76,6 +76,26 @@ Depuis **v1.5.0**, il y a 4 niveaux hiérarchiques :
 | **admin**  | manage + write + read | Administration : `admin_create_token`, `admin_gc_notes`, etc.                                                                                     |
 
 Un token `write` ne peut **pas** modifier directement les fichiers bank ni supprimer des espaces — il faut `manage` ou `admin`.
+
+### Pourquoi les permissions sont-elles cumulatives ?
+
+Chaque niveau **inclut automatiquement** tous les niveaux inférieurs. Il n'est pas nécessaire de spécifier `read,write` si vous donnez `manage` — `manage` contient déjà `write` et `read`.
+
+```
+read < write < manage < admin
+```
+
+En pratique, lors de la création ou mise à jour d'un token, spécifiez toujours la **liste complète** des permissions (ex : `"read,write,manage"`), car le champ `permissions` est une **liste explicite** stockée sur S3, pas un niveau unique. Le serveur vérifie la présence du niveau requis dans cette liste.
+
+### Quel type de token créer selon mon cas d'usage ?
+
+| Cas d'usage | Permissions recommandées | `space_ids` |
+| --- | --- | --- |
+| Agent IA en mode travail (Cline, Claude) | `read,write` | Espaces du projet |
+| Agent IA + maintenance (compaction, repair) | `read,write,manage` | Espaces du projet |
+| Opérateur humain (maintenance multi-projets) | `read,write,manage` | Tous les espaces concernés |
+| Administrateur | `read,write,manage,admin` | Vide (admin voit tout) |
+| Lecteur / dashboard de monitoring | `read` | Espaces à surveiller |
 
 ### Comment restreindre un token à certains espaces ?
 
@@ -279,6 +299,54 @@ Oui ! Ajoutez `--json` (CLI) ou `--json` (shell) à n'importe quelle commande :
 ```bash
 python scripts/mcp_cli.py space list --json | jq '.spaces[].space_id'
 ```
+
+---
+
+## Troubleshooting — Problèmes courants
+
+### J'ai un 403 sur tous les espaces
+
+**Cause la plus fréquente** : votre token a `space_ids=[]` (aucun accès). Depuis v1.5.0, un token non-admin sans `space_ids` ne peut accéder à rien.
+
+**Diagnostic** :
+```bash
+python scripts/mcp_cli.py token list --json | jq '.tokens[] | select(.name=="mon-token") | .space_ids'
+```
+
+**Solution** : demander à un admin de mettre à jour vos espaces :
+```bash
+python scripts/mcp_cli.py token update sha256:xxx -s "espace-a,espace-b"
+```
+
+### Mon token `manage` ne peut rien faire
+
+Un token `manage` sans `space_ids` est un "mainteneur sans rien à maintenir". Il peut uniquement créer de nouveaux espaces (qui seront auto-ajoutés à ses `space_ids`).
+
+**Solution** : ajouter les espaces à gérer :
+```bash
+python scripts/mcp_cli.py token update sha256:xxx -s "espace-a,espace-b"
+```
+
+### La consolidation échoue avec "LLM returned invalid JSON"
+
+Cause probable : la bank est trop volumineuse. Le LLM a un context window limité et peut échouer sur les réponses JSON longues.
+
+**Solutions** :
+1. Compacter la bank : `bank_compact mon-espace --apply`
+2. Vérifier les tailles : `bank_list mon-espace` — si un fichier dépasse 15 KB, c'est un candidat à la compaction
+3. Relancer la consolidation après compaction
+
+### `bank_consolidate` retourne "conflict"
+
+Un autre agent (ou vous-même dans un autre terminal) est en train de consolider le même espace. Le lock `asyncio` protège contre les écritures concurrentes.
+
+**Solution** : attendre 15-30 secondes et réessayer.
+
+### Je ne retrouve plus mes notes après consolidation
+
+C'est normal ! Les notes sont **supprimées** de `live/` après consolidation. Leur contenu est intégré dans les fichiers bank. Utilisez `bank_read_all` pour retrouver le contenu consolidé.
+
+Si vous pensez que des notes ont été perdues, vérifiez la synthèse résiduelle : `space_summary mon-espace`.
 
 ---
 
