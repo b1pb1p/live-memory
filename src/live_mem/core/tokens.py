@@ -88,9 +88,19 @@ class TokenService:
     def _token_not_found_or_ambiguous(self, idx: int, token_hash: str) -> dict | None:
         """Retourne un message d'erreur si le token n'est pas trouvé, ou None si OK."""
         if idx == -3:
+            # Review #12 fix : afficher la longueur du hex pur (pas du préfixé),
+            # car la validation min 16 chars s'applique sur le hex.
+            hex_part = (
+                token_hash[len("sha256:") :]
+                if token_hash.startswith("sha256:")
+                else token_hash
+            )
             return {
                 "status": "error",
-                "message": f"Hash trop court ({len(token_hash)} chars). Minimum 16 caractères requis.",
+                "message": (
+                    f"Hash hex trop court ({len(hex_part)} chars). "
+                    "Minimum 16 caractères hex requis."
+                ),
             }
         if idx == -2:
             return {
@@ -100,6 +110,50 @@ class TokenService:
         if idx == -1:
             return {"status": "not_found", "message": "Token introuvable"}
         return None
+
+    async def _resolve_space_ids(self, space_ids: str) -> tuple[list[str], bool]:
+        """
+        Résout l'argument ``space_ids`` en liste matérialisée.
+
+        Gère le sucre syntaxique ``"*"`` / ``"all"`` (snapshot des espaces
+        existants au moment de l'appel) — partagé entre ``create_token`` et
+        ``update_token`` pour garantir une UX cohérente (review #12).
+
+        Args:
+            space_ids: Chaîne d'entrée. Une liste séparée par virgules,
+                ou ``"*"``/``"all"`` (snapshot), ou vide.
+
+        Returns:
+            Tuple ``(sid_list, snapshot_used)`` :
+
+            - ``sid_list`` : liste matérialisée des space_ids
+            - ``snapshot_used`` : ``True`` si le sucre ``*``/``all`` a été
+              utilisé (la réponse appelante ajoutera des champs informatifs).
+        """
+        space_ids_stripped = (space_ids or "").strip()
+        if space_ids_stripped.lower() in ("*", "all"):
+            from .space import get_space_service  # import local pour éviter cycles
+
+            spaces_result = await get_space_service().list_spaces()
+            if spaces_result.get("status") == "ok":
+                return (
+                    [s["space_id"] for s in spaces_result.get("spaces", [])],
+                    True,
+                )
+            return ([], True)
+        return ([s.strip() for s in space_ids.split(",") if s.strip()], False)
+
+    @staticmethod
+    def _muted_token_warning() -> str:
+        """Message standard pour les tokens "muets" (issue #11)."""
+        return (
+            "⚠️ Ce token n'a accès à aucun espace existant (space_ids=[]). "
+            "Depuis v1.5.0, c'est la sémantique stricte par défaut. "
+            "Utilisez space_ids='*' pour un snapshot de tous les espaces "
+            "actuels, ou listez-les explicitement (ex: 'space-a,space-b'). "
+            "Le token peut tout de même créer ses propres nouveaux spaces."
+        )
+
 
     async def create_token(
         self,
@@ -157,22 +211,10 @@ class TokenService:
                 ),
             }
 
-        # Issue #11 fix : sucre syntaxique "*" / "all" → snapshot des spaces
-        # existants. On évite l'import circulaire en important localement.
+        # Issue #11 fix + review #12 : logique partagée avec update_token
+        # via _resolve_space_ids (sucre "*"/"all" → snapshot).
         space_ids_stripped = (space_ids or "").strip()
-        snapshot_used = False
-        if space_ids_stripped.lower() in ("*", "all"):
-            from .space import get_space_service  # import local pour éviter cycles
-
-            spaces_result = await get_space_service().list_spaces()
-            if spaces_result.get("status") == "ok":
-                sid_list = [s["space_id"] for s in spaces_result.get("spaces", [])]
-            else:
-                sid_list = []
-            snapshot_used = True
-        else:
-            # Parser la liste explicite
-            sid_list = [s.strip() for s in space_ids.split(",") if s.strip()]
+        sid_list, snapshot_used = await self._resolve_space_ids(space_ids)
 
         # Calculer l'expiration
         now = datetime.now(timezone.utc)
@@ -213,13 +255,7 @@ class TokenService:
         # spaces (auto-ajoutés via add_space_to_token).
         is_admin = "admin" in perm_list
         if not is_admin and not sid_list:
-            response["warning_no_access"] = (
-                "⚠️ Ce token n'a accès à aucun espace existant (space_ids=[]). "
-                "Depuis v1.5.0, c'est la sémantique stricte par défaut. "
-                "Utilisez space_ids='*' pour un snapshot de tous les espaces "
-                "actuels, ou listez-les explicitement (ex: 'space-a,space-b'). "
-                "Le token peut tout de même créer ses propres nouveaux spaces."
-            )
+            response["warning_no_access"] = self._muted_token_warning()
 
         if snapshot_used:
             response["snapshot_taken"] = True
@@ -357,14 +393,33 @@ class TokenService:
         VULN-03 fix : utilise _find_token_by_hash pour une correspondance
         sécurisée (min 16 chars, détection d'ambiguïté).
 
+        Review #12 fix : ``space_ids`` accepte désormais ``"*"`` ou ``"all"``
+        (snapshot des espaces existants), aligné avec ``create_token``.
+        Quand l'opération aboutit à un token "muet" (non-admin avec
+        space_ids=[]), un ``warning_no_access`` est ajouté à la réponse.
+
         Args:
             token_hash: Hash du token (min 16 chars de préfixe)
-            space_ids: Nouveaux espaces autorisés (vide = pas de changement)
+            space_ids: Nouveaux espaces autorisés.
+
+                - ``""`` (vide) → pas de changement.
+                - ``"a,b"`` → liste explicite.
+                - ``"*"`` ou ``"all"`` → snapshot des espaces existants.
             permissions: Nouvelles permissions (vide = pas de changement)
 
         Returns:
-            {"status": "ok"} ou erreur
+            ``{"status": "ok"}`` ou erreur. Si ``space_ids`` modifié et que
+            le résultat est un token muet (non-admin sans aucun space),
+            la réponse contient un champ ``warning_no_access``.
         """
+        # Pré-résoudre le sucre "*"/"all" hors du lock pour éviter
+        # de tenir le verrou pendant un appel S3 (list_spaces).
+        space_ids_stripped = (space_ids or "").strip()
+        new_space_ids: Optional[list[str]] = None
+        snapshot_used = False
+        if space_ids_stripped:
+            new_space_ids, snapshot_used = await self._resolve_space_ids(space_ids)
+
         async with get_lock_manager().tokens:
             store = await self._load_store()
 
@@ -390,14 +445,39 @@ class TokenService:
                 token.permissions = [
                     p.strip() for p in permissions.split(",") if p.strip()
                 ]
-            if space_ids:
-                token.space_ids = [s.strip() for s in space_ids.split(",")]
+            if new_space_ids is not None:
+                token.space_ids = new_space_ids
             if email:
                 token.email = email
 
             await self._save_store(store)
+            # Snapshot des champs nécessaires pour la réponse (avant sortie du lock)
+            updated_name = token.name
+            updated_space_ids = list(token.space_ids)
+            updated_perms = list(token.permissions)
 
-        return {"status": "ok", "message": f"Token '{token.name}' mis à jour"}
+        response = {
+            "status": "ok",
+            "message": f"Token '{updated_name}' mis à jour",
+        }
+
+        # Review #12 : signaler un token muet (cohérent avec create_token)
+        # uniquement si space_ids a été touché par cet appel.
+        if new_space_ids is not None:
+            is_admin = "admin" in updated_perms
+            if not is_admin and not updated_space_ids:
+                response["warning_no_access"] = self._muted_token_warning()
+
+        if snapshot_used:
+            response["snapshot_taken"] = True
+            response["info"] = (
+                f"space_ids='{space_ids_stripped}' interprété comme snapshot "
+                f"des {len(updated_space_ids)} espace(s) existant(s) au moment "
+                "de la mise à jour. Les futurs nouveaux espaces ne seront PAS "
+                "automatiquement ajoutés."
+            )
+
+        return response
 
     async def add_space_to_token(self, token_hash: str, space_id: str) -> dict:
         """

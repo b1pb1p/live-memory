@@ -12,7 +12,6 @@ Coverage:
     - `create_token(space_ids="all")` est synonyme de `*`.
 """
 
-import hashlib
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -308,3 +307,141 @@ async def test_update_token_accepts_hex_only_hash():
     assert result["status"] == "ok"
     assert existing.space_ids == ["new-space"]
     save_mock.assert_called_once()
+
+
+# ─────────────────────────────────────────────────────────────
+# Tests : review #12 — corrections du second tour
+# ─────────────────────────────────────────────────────────────
+
+
+def test_find_token_error_message_uses_hex_length():
+    """Review #12 : le message d'erreur doit indiquer la longueur du hex pur,
+    pas celle incluant le préfixe 'sha256:'."""
+    svc = TokenService()
+    store = TokensStore(tokens=[])
+
+    # Hash "sha256:abc" = 11 chars total, mais 3 chars hex.
+    too_short_with_prefix = "sha256:abc"
+    idx, _ = svc._find_token_by_hash(store, too_short_with_prefix)
+    err = svc._token_not_found_or_ambiguous(idx, too_short_with_prefix)
+
+    assert err is not None
+    # Le message doit parler de "3 chars" (hex pur), pas de "11 chars"
+    assert "3 chars" in err["message"]
+    assert "hex" in err["message"].lower()
+    assert "11" not in err["message"]
+
+
+@pytest.mark.asyncio
+async def test_update_token_star_takes_snapshot():
+    """Review #12 : update_token(space_ids='*') doit matérialiser un snapshot
+    des espaces existants (cohérence avec create_token)."""
+    svc = TokenService()
+    h = "1234" * 16  # 64 chars hex
+    existing = _make_token("targ", suffix=h, space_ids=["legacy"])
+    store = TokensStore(tokens=[existing])
+
+    fake_spaces = {
+        "status": "ok",
+        "spaces": [
+            {"space_id": "alpha"},
+            {"space_id": "beta"},
+        ],
+    }
+    fake_space_service = type(
+        "FakeSpaceService", (), {"list_spaces": AsyncMock(return_value=fake_spaces)}
+    )()
+
+    with patch.object(svc, "_load_store", new=AsyncMock(return_value=store)), \
+         patch.object(svc, "_save_store", new=AsyncMock()), \
+         patch(
+             "live_mem.core.space.get_space_service", return_value=fake_space_service
+         ):
+        result = await svc.update_token(token_hash=h, space_ids="*")
+
+    assert result["status"] == "ok"
+    assert result.get("snapshot_taken") is True
+    assert "info" in result
+    # Le token doit avoir été matérialisé avec les 2 spaces du snapshot
+    assert existing.space_ids == ["alpha", "beta"]
+
+
+@pytest.mark.asyncio
+async def test_update_token_warns_when_star_yields_empty_list():
+    """Review #12 : si update_token(space_ids='*') sur une instance sans
+    aucun space, le token devient muet → warning_no_access attendu (non-admin)."""
+    svc = TokenService()
+    h = "5678" * 16
+    existing = _make_token(
+        "muet-update", suffix=h, permissions=["read", "write"], space_ids=["legacy"]
+    )
+    store = TokensStore(tokens=[existing])
+
+    fake_spaces = {"status": "ok", "spaces": []}  # Aucun space dans l'instance
+    fake_space_service = type(
+        "FakeSpaceService", (), {"list_spaces": AsyncMock(return_value=fake_spaces)}
+    )()
+
+    with patch.object(svc, "_load_store", new=AsyncMock(return_value=store)), \
+         patch.object(svc, "_save_store", new=AsyncMock()), \
+         patch(
+             "live_mem.core.space.get_space_service", return_value=fake_space_service
+         ):
+        result = await svc.update_token(token_hash=h, space_ids="*")
+
+    assert result["status"] == "ok"
+    assert existing.space_ids == []
+    # Token muet → warning attendu pour non-admin
+    assert "warning_no_access" in result
+
+
+@pytest.mark.asyncio
+async def test_update_token_empty_space_ids_no_change():
+    """update_token(space_ids='') ne doit pas toucher aux space_ids existants
+    (sémantique 'vide = pas de changement', inchangée)."""
+    svc = TokenService()
+    h = "9abc" * 16
+    existing = _make_token("keep-old", suffix=h, space_ids=["projet-a", "projet-b"])
+    store = TokensStore(tokens=[existing])
+
+    with patch.object(svc, "_load_store", new=AsyncMock(return_value=store)), \
+         patch.object(svc, "_save_store", new=AsyncMock()):
+        result = await svc.update_token(token_hash=h, space_ids="", email="new@x")
+
+    assert result["status"] == "ok"
+    # Liste inchangée
+    assert existing.space_ids == ["projet-a", "projet-b"]
+    assert existing.email == "new@x"
+    # Pas de warning car space_ids n'a pas été touché
+    assert "warning_no_access" not in result
+
+
+@pytest.mark.asyncio
+async def test_update_token_admin_no_warning_when_emptied():
+    """Un admin avec space_ids vidé (via *) ne doit PAS recevoir warning_no_access."""
+    svc = TokenService()
+    h = "deff" * 16
+    existing = _make_token(
+        "admin-tok",
+        suffix=h,
+        permissions=["read", "write", "admin"],
+        space_ids=["legacy"],
+    )
+    store = TokensStore(tokens=[existing])
+
+    fake_spaces = {"status": "ok", "spaces": []}
+    fake_space_service = type(
+        "FakeSpaceService", (), {"list_spaces": AsyncMock(return_value=fake_spaces)}
+    )()
+
+    with patch.object(svc, "_load_store", new=AsyncMock(return_value=store)), \
+         patch.object(svc, "_save_store", new=AsyncMock()), \
+         patch(
+             "live_mem.core.space.get_space_service", return_value=fake_space_service
+         ):
+        result = await svc.update_token(token_hash=h, space_ids="*")
+
+    assert result["status"] == "ok"
+    assert existing.space_ids == []
+    # Admin → pas de warning (bypass check_access)
+    assert "warning_no_access" not in result

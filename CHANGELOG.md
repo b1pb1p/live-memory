@@ -12,15 +12,8 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
   - **Documentation contradictoire avec v1.5.0** : les `Field.description` et docstrings de `admin_create_token` (`tools/admin.py`) et `TokenService.create_token` (`core/tokens.py`) disaient encore "vide = tous les espaces", alors que la sémantique stricte v1.5.0 stipule "vide = aucun accès" pour les non-admin. Corrigé pour refléter la réalité du code.
   - **Tokens "muets" créés silencieusement** : `admin_create_token(space_ids="")` produisait un token techniquement valide mais incapable d'accéder à aucun espace existant (403 systématique). La réponse contient désormais un champ `warning_no_access` explicite quand le token résultant n'a aucun espace autorisé et n'est pas admin.
   - **Sucre syntaxique `*` / `all`** : `admin_create_token(space_ids="*")` ou `space_ids="all"` prend désormais un **snapshot** des espaces existants au moment de la création (les futurs nouveaux spaces ne sont pas inclus, pour rester aligné avec la sémantique stricte v1.5.0). La réponse inclut `snapshot_taken: true` et un message `info` détaillant la liste matérialisée.
-  - **Préfixe `sha256:` non documenté** : `_find_token_by_hash` exigeait que le hash passé à `admin_revoke_token` / `admin_delete_token` / `admin_update_token` inclue le préfixe `sha256:` retourné par `admin_list_tokens`. Si l'utilisateur copiait juste la partie hex, l'opération retournait silencieusement `Token introuvable`. La méthode normalise désormais l'entrée et accepte les deux formes (`sha256:abc...` ou `abc...`). La validation min 16 chars s'applique maintenant sur le hex pur.
-
-### Fichiers modifiés
-| Fichier | Changements |
-| --- | --- |
-| `src/live_mem/core/tokens.py` | `_find_token_by_hash` : normalisation du préfixe `sha256:`. `create_token` : sucre `*`/`all`, `warning_no_access`, docstring corrigée. |
-| `src/live_mem/tools/admin.py` | `Field.description` corrigés pour `space_ids` (sémantique v1.5.0 explicite) et `token_hash` (préfixe optionnel) sur `revoke`/`delete`/`update`. Docstring `admin_create_token` mise à jour. |
-| `FAQ.md` | Section "Comment restreindre un token à certains espaces ?" enrichie (sucre `*`/`all`, `warning_no_access`). Nouvelle FAQ sur le préfixe `sha256:` optionnel. |
-| `tests/test_tokens.py` | Nouveaux tests couvrant les 3 fixes (création muette, snapshot `*`, normalisation hash). |
+  - **Préfixe `sha256:` non documenté** : `_find_token_by_hash` exigeait que le hash passé à `admin_revoke_token` / `admin_delete_token` / `admin_update_token` inclue le préfixe `sha256:` retourné par `admin_list_tokens`. Si l'utilisateur copiait juste la partie hex, l'opération retournait silencieusement `Token introuvable`. La méthode normalise désormais l'entrée et accepte les deux formes (`sha256:abc...` ou `abc...`). La validation min 16 chars s'applique maintenant sur le hex pur, et le message d'erreur indique la longueur du hex pur (review #12).
+  - **Cohérence `admin_update_token`** (review #12) : le sucre `*`/`all` et le `warning_no_access` sont également appliqués à `update_token` (extraction d'un helper privé `_resolve_space_ids`), évitant que la même trappe UX réapparaisse lors d'une mise à jour.
 
 ---
 

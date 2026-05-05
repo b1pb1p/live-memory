@@ -271,7 +271,11 @@ def register(mcp: FastMCP) -> int:
             str,
             Field(
                 default="",
-                description="Nouveaux espaces autorisés séparés par virgules (vide = pas de changement)",
+                description=(
+                    "Nouveaux espaces autorisés, séparés par virgules. "
+                    "Vide = pas de changement. Utilisez '*' ou 'all' pour un "
+                    "snapshot des espaces existants (cohérent avec admin_create_token)."
+                ),
             ),
         ] = "",
         permissions: Annotated[
