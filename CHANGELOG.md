@@ -5,7 +5,7 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
 ---
 
-## [Unreleased]
+## [1.7.2] — 2026-05-05
 
 ### Corrigé
 - **Issue #11 — Token UX traps** — Trio cohérent de bugs UX autour des tokens (pas une faille de sécurité, mais source garantie de friction à chaque onboarding).
