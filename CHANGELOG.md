@@ -5,6 +5,19 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
 ---
 
+## [1.7.3] — 2026-05-07
+
+### Amélioré
+- **Logging diagnostic consolidation** — Le WARNING `LLM: JSON invalide` dans `_call_llm()` logge maintenant `finish_reason`, `completion_tokens` et `visible_tokens_est` en plus des champs existants. Permet de diagnostiquer les JSON tronqués (thinking tokens consommant le budget de sortie, cap API côté serveur, ou arrêt prématuré du modèle) sans avoir à deviner la cause.
+
+### Fichiers modifiés
+| Fichier | Changements |
+| --- | --- |
+| `src/live_mem/core/consolidator.py` | `_call_llm()` : capture `finish_reason` et `completion_tokens` après chaque appel LLM, ajout de `visible_tokens_est` dans le WARNING |
+| `VERSION`, `__init__.py`, `CHANGELOG.md` | Bump 1.7.2 → 1.7.3 |
+
+---
+
 ## [1.7.2] — 2026-05-05
 
 ### Corrigé

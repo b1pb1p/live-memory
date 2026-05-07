@@ -588,6 +588,10 @@ Retourne un JSON avec cette structure exacte :
                 )
 
                 raw_content = response.choices[0].message.content or ""
+                finish_reason = response.choices[0].finish_reason
+                completion_tokens = (
+                    response.usage.completion_tokens if response.usage else None
+                )
 
                 # Extraire le JSON de la réponse (peut être enveloppé dans ```json)
                 json_str = _extract_json(raw_content)
@@ -598,12 +602,18 @@ Retourne un JSON avec cette structure exacte :
                 except json.JSONDecodeError as exc:
                     # Log la réponse brute (tronquée) pour diagnostic
                     raw_preview = raw_content[:500] if raw_content else "(empty)"
+                    visible_tokens_est = len(raw_content) // 4
                     logger.warning(
                         "LLM: JSON invalide (attempt %d/%d) — "
-                        "json_error=%s, raw_len=%d, raw_preview=%s",
+                        "json_error=%s, finish_reason=%s, "
+                        "completion_tokens=%s, visible_tokens_est=%d, "
+                        "raw_len=%d, raw_preview=%s",
                         attempt + 1,
                         2,
                         str(exc)[:100],
+                        finish_reason,
+                        completion_tokens,
+                        visible_tokens_est,
                         len(raw_content),
                         raw_preview,
                     )
