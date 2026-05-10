@@ -5,6 +5,23 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
 ---
 
+## [1.7.4] — 2026-05-10
+
+### Ajouté
+- **Réparation automatique de JSON LLM tronqué** — Nouvelle fonction `_repair_json()` dans `consolidator.py` qui détecte les erreurs "Unterminated string" (fréquentes avec qwen3.x, `finish_reason=stop`) et répare le JSON avant de retomber sur le retry coûteux. Stratégie : tronquer au point de l'erreur, fermer les structures JSON ouvertes via `_close_json_structure()`, supprimer la dernière opération tronquée. Économise ~100s et ~50K tokens par occurrence.
+- **Garde-fou retry sur repair vide** — Si la réparation JSON réussit mais produit 0 `file_edits` (troncature très précoce), le code retombe sur le retry LLM au lieu d'accepter silencieusement un résultat vide (évite la perte de données).
+- **29 tests unitaires** (`tests/test_json_repair.py`) — Couvrent `_close_json_structure` (10 tests : niveaux imbriqués, strings avec accolades, échappements, backslash) et `_repair_json` (19 tests : comptage exact d'opérations, troncature dans content/heading/filename, create tronqué, guillemets échappés, scénario réaliste qwen3.6, intégrité JSON).
+
+### Fichiers modifiés
+| Fichier | Changements |
+| --- | --- |
+| `src/live_mem/core/consolidator.py` | `_call_llm()` : tentative de repair avant retry, garde-fou `repaired_files > 0`. Nouvelles fonctions `_repair_json()` et `_close_json_structure()` |
+| `tests/test_json_repair.py` | **Nouveau** — 29 tests unitaires (5 classes) |
+| `DESIGN/live-mem/CONSOLIDATION_LLM.md` | Section 8.4 : réparation automatique JSON |
+| `VERSION`, `__init__.py`, `CHANGELOG.md` | Bump 1.7.3 → 1.7.4 |
+
+---
+
 ## [1.7.3] — 2026-05-07
 
 ### Amélioré

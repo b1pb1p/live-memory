@@ -485,6 +485,33 @@ Si une opération référence un heading qui n'existe pas dans le fichier :
 
 Identique à la v0.5 : atomicité logique, notes supprimées en dernier.
 
+### 8.4 Réparation automatique de JSON tronqué (v1.7.4)
+
+**Problème** : qwen3.x génère parfois du JSON avec une chaîne non terminée (`Unterminated string`). Le modèle pense avoir terminé (`finish_reason=stop`) mais le JSON est structurellement invalide. L'écart entre `completion_tokens` (inclut les thinking tokens) et `visible_tokens_est` (~raw_len/4) confirme que ce n'est pas une troncature budget mais un bug de génération.
+
+**Mécanisme** : avant le retry coûteux (2ème appel LLM complet, ~100s + ~50K tokens), `_call_llm()` tente une réparation automatique via `_repair_json()` :
+
+1. **Détection** : seule l'erreur `Unterminated string` est gérée (les autres erreurs JSON passent au retry classique)
+2. **Troncature** : `json_str[:exc.pos]` conserve tout le JSON valide avant le `"` ouvrant non fermé
+3. **Placeholder** : `""` est ajouté comme valeur de remplacement
+4. **Fermeture** : `_close_json_structure()` parcourt le JSON partiel avec un automate à pile (stack-based), suit les strings/échappements, et ferme les `}` et `]` manquants
+5. **Nettoyage** : la dernière opération (celle avec `content=""`) est supprimée pour éviter un `replace_section` avec contenu vide qui effacerait une section
+6. **Synthesis par défaut** : si absente du JSON tronqué, une valeur placeholder est ajoutée
+
+**Garde-fou** : si la réparation produit 0 `file_edits` (troncature très précoce, aucune opération complète), le code retombe sur le retry LLM au lieu d'accepter un résultat vide (évite la suppression silencieuse des notes sans écriture dans la bank).
+
+**Décision** : repair OU retry, jamais les deux. Si repair réussit avec ≥1 file_edit, on utilise le résultat réparé (dernière opération tronquée perdue, toutes les autres préservées). Si repair échoue ou produit 0 edits, retry classique.
+
+```
+Attempt 1 → JSON invalide
+  ├── _repair_json() → ≥1 file_edits → UTILISER (économise ~100s)
+  ├── _repair_json() → 0 file_edits → RETRY (troncature trop précoce)
+  └── _repair_json() → None        → RETRY (erreur non-Unterminated)
+Attempt 2 → retry classique (messages + rappel explicite)
+```
+
+**Tests** : 29 tests unitaires dans `tests/test_json_repair.py` — `_close_json_structure` (10 tests : imbrication, strings, échappements, backslash) + `_repair_json` (19 tests : comptage exact, troncature content/heading/filename, create tronqué, scénario réaliste qwen3.6).
+
 ---
 
 ## 9. Configuration LLMaaS

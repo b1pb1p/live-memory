@@ -617,7 +617,41 @@ Retourne un JSON avec cette structure exacte :
                         len(raw_content),
                         raw_preview,
                     )
-                    if attempt == 0:
+
+                    # ── Tentative de réparation automatique ──
+                    # Avant le retry coûteux (2ème appel LLM complet),
+                    # essayer de réparer le JSON tronqué/malformé.
+                    # Gère le cas "Unterminated string" (le plus fréquent
+                    # avec qwen3.x : chaîne non fermée, finish_reason=stop).
+                    repaired_data = _repair_json(json_str, exc)
+                    repaired_files = (
+                        len(repaired_data.get("file_edits", []))
+                        if repaired_data
+                        else 0
+                    )
+                    if repaired_data is not None and repaired_files > 0:
+                        # Repair réussie avec du contenu utile
+                        repaired_ops = sum(
+                            len(fe.get("operations", []))
+                            for fe in repaired_data.get("file_edits", [])
+                            if fe.get("action") == "edit"
+                        )
+                        logger.warning(
+                            "LLM: JSON réparé automatiquement — "
+                            "%d file_edits, %d operations récupérées "
+                            "(dernière opération tronquée supprimée)",
+                            repaired_files,
+                            repaired_ops,
+                        )
+                        data = repaired_data
+                        # Fall through vers la validation ci-dessous
+                    elif attempt == 0:
+                        # Repair échouée OU repair vide (0 file_edits) → retry
+                        if repaired_data is not None and repaired_files == 0:
+                            logger.warning(
+                                "LLM: JSON réparé mais 0 file_edits "
+                                "récupérés — retry au lieu d'accepter"
+                            )
                         # Retry avec un rappel plus explicite
                         messages.append({"role": "assistant", "content": raw_content})
                         messages.append(
@@ -631,11 +665,12 @@ Retourne un JSON avec cette structure exacte :
                             }
                         )
                         continue
-                    return {
-                        "status": "error",
-                        "message": "LLM returned invalid JSON after retry",
-                        "raw_preview": raw_preview,
-                    }
+                    else:
+                        return {
+                            "status": "error",
+                            "message": "LLM returned invalid JSON after retry",
+                            "raw_preview": raw_preview,
+                        }
 
                 # Valider la structure minimale
                 if "file_edits" not in data or "synthesis" not in data:
@@ -1892,6 +1927,159 @@ def _extract_json(text: str) -> str:
 
     # 5. Retourner le texte tel quel (json.loads() échouera)
     return text.strip()
+
+
+def _repair_json(json_str: str, exc: json.JSONDecodeError) -> dict | None:
+    """
+    Tente de réparer un JSON tronqué/malformé provenant du LLM.
+
+    Gère le cas "Unterminated string" (le plus fréquent avec qwen3.x) :
+    le modèle génère une chaîne JSON dont une valeur string n'est
+    jamais fermée (ex: guillemet ou caractère spécial non échappé).
+    finish_reason=stop mais le JSON est structurellement invalide.
+
+    Stratégie :
+    1. Tronquer au point de l'erreur (avant la chaîne non terminée)
+    2. Ajouter une chaîne vide "" comme placeholder
+    3. Fermer toutes les structures JSON ouvertes ({, [)
+    4. Parser le JSON réparé
+    5. Supprimer la dernière opération (celle avec le contenu tronqué)
+    6. Ajouter un champ "synthesis" par défaut s'il est absent
+
+    Avantages vs retry :
+    - Récupère ~90% des opérations instantanément (0 latence)
+    - Économise 1 appel LLM complet (~100s + ~50K tokens)
+    - Si la réparation échoue, le retry existant prend le relais
+
+    Args:
+        json_str: Chaîne JSON extraite par _extract_json()
+        exc: L'exception JSONDecodeError avec la position de l'erreur
+
+    Returns:
+        Dict parsé si la réparation réussit, None sinon
+    """
+    error_msg = str(exc)
+
+    if "Unterminated string" not in error_msg:
+        return None
+
+    pos = exc.pos
+    if not pos or pos <= 0 or pos >= len(json_str):
+        return None
+
+    # ── Étape 1 : Tronquer avant la chaîne non terminée ──
+    # exc.pos pointe vers le `"` ouvrant de la chaîne qui n'a pas de `"` fermant.
+    # Tout ce qui précède cette position est du JSON valide (parsé sans erreur).
+    # On ajoute "" comme placeholder pour la valeur tronquée.
+    prefix = json_str[:pos] + '""'
+
+    # ── Étape 2 : Fermer toutes les structures ouvertes ──
+    repaired_str = _close_json_structure(prefix)
+    if repaired_str is None:
+        return None
+
+    # ── Étape 3 : Parser le JSON réparé ──
+    try:
+        data = json.loads(repaired_str)
+    except json.JSONDecodeError:
+        return None
+
+    if not isinstance(data, dict) or "file_edits" not in data:
+        return None
+
+    # ── Étape 4 : Nettoyer les opérations tronquées ──
+    # La dernière opération du dernier file_edit a un content="" (notre placeholder).
+    # Plutôt que d'appliquer une opération replace_section avec un contenu vide
+    # (qui effacerait la section), on la supprime proprement.
+    file_edits = data.get("file_edits", [])
+    if file_edits:
+        last_edit = file_edits[-1]
+        if last_edit.get("action") == "edit":
+            ops = last_edit.get("operations", [])
+            if ops:
+                last_op = ops[-1]
+                # Supprimer l'opération si son contenu est vide (= tronquée)
+                if not last_op.get("content", "").strip():
+                    ops.pop()
+                    logger.info(
+                        "JSON repair: suppression de l'opération tronquée "
+                        "(%s sur '%s')",
+                        last_op.get("type", "?"),
+                        last_op.get("heading", "?"),
+                    )
+                # Si plus aucune opération, supprimer le file_edit vide
+                if not ops:
+                    file_edits.pop()
+        elif last_edit.get("action") in ("create", "rewrite"):
+            # Pour create/rewrite, le content est le fichier entier.
+            # S'il est vide, le file_edit est inutile.
+            if not last_edit.get("content", "").strip():
+                file_edits.pop()
+
+    # ── Étape 5 : Ajouter synthesis par défaut si absent ──
+    if "synthesis" not in data:
+        data["synthesis"] = (
+            "(consolidation partielle — JSON réparé automatiquement, "
+            "dernière opération tronquée supprimée)"
+        )
+
+    return data
+
+
+def _close_json_structure(partial_json: str) -> str | None:
+    """
+    Ferme toutes les structures JSON ouvertes à la fin d'un JSON partiel.
+
+    Parcourt le JSON en suivant les guillemets (strings) et empile les
+    ouvertures { et [. Puis ajoute les fermetures manquantes dans l'ordre.
+
+    Robuste face aux strings contenant des accolades/crochets échappés.
+
+    Args:
+        partial_json: JSON partiel (potentiellement non terminé)
+
+    Returns:
+        JSON complété avec les fermetures manquantes, ou None si
+        on est encore dans une string non fermée (irréparable)
+    """
+    stack = []
+    in_string = False
+    escape_next = False
+
+    for ch in partial_json:
+        if escape_next:
+            escape_next = False
+            continue
+
+        if in_string:
+            if ch == "\\":
+                escape_next = True
+            elif ch == '"':
+                in_string = False
+            continue
+
+        # Hors d'une string
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            stack.append("}")
+        elif ch == "[":
+            stack.append("]")
+        elif ch in ("}", "]"):
+            if stack and stack[-1] == ch:
+                stack.pop()
+
+    # Si on est encore dans une string, la réparation est impossible
+    # (notre caller aurait dû fermer la string avant d'appeler)
+    if in_string:
+        return None
+
+    if not stack:
+        return partial_json
+
+    # Fermer toutes les structures ouvertes dans l'ordre inverse
+    closing = "".join(reversed(stack))
+    return partial_json + closing
 
 
 def _convert_legacy_format(data: dict) -> dict:
