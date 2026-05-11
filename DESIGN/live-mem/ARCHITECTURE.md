@@ -118,7 +118,7 @@ live-mem      = Mémoire de TRAVAIL (notes live → LLM → Memory Bank)
 | Composant                | Rôle                                         | Technologie                              |
 | ------------------------ | -------------------------------------------- | ---------------------------------------- |
 | **WAF**                  | Reverse proxy sécurisé                       | Caddy + Coraza OWASP CRS + Rate Limiting |
-| **MCP Server**           | Serveur MCP Python (39 outils, 7 catégories) | FastMCP + Uvicorn (ASGI)                 |
+| **MCP Server**           | Serveur MCP Python (40 outils, 7 catégories) | FastMCP + Uvicorn (ASGI)                 |
 | **Storage Service**      | Abstraction S3 (lecture/écriture/listing)    | boto3 hybride SigV2/V4                   |
 | **Consolidator Service** | Synthèse LLM des notes → bank                | AsyncOpenAI (qwen3.5:27b)            |
 | **Graph Bridge**         | Pont vers Graph Memory (mémoire long terme)  | SDK MCP (streamablehttp_client)          |

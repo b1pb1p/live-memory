@@ -79,8 +79,9 @@ SHELL_COMMANDS = {
     "bank repair": "Réparer noms corrompus (bank repair <space> [--apply]) admin",
     "bank compact": "Compacter fichiers surdimensionnés (bank compact <space> [--apply]) admin",
     "token create": "Créer un token (token create <name> -p <read|read,write|read,write,manage|...admin> [--email <email>])",
-    "token update": "Modifier un token (token update <hash> --permissions <perms> --space-ids <ids>)",
-    "token list": "Lister les tokens",
+    "token update": "Modifier un token (token update <hash> [--permissions ...] [--space-ids ... | --add-spaces ... --remove-spaces ...])",
+    "token list": "Lister les tokens (token list [--name-contains x] [--has-space y] [--no-revoked])",
+    "token bulk-update": "MAJ N tokens (token bulk-update --name-contains agent --add-spaces new --confirm) issue #13",
     "token revoke": "Révoquer un token (token revoke <hash>)",
     "token delete": "Supprimer physiquement un token (token delete <hash>)",
     "token purge": "Purger les tokens révoqués (token purge [--all])",
@@ -634,7 +635,7 @@ async def _handle_token(client, args, json_out):
 
     elif sub == "update" and len(args) >= 2:
         token_hash = args[1]
-        # Parser les flags --permissions et --space-ids
+        # Parser les flags --permissions, --space-ids, --add-spaces, --remove-spaces, --email
         mcp_args = {"token_hash": token_hash}
         remaining = args[2:]
         i = 0
@@ -653,6 +654,12 @@ async def _handle_token(client, args, json_out):
             elif flag in ("--space-ids", "-s") and i + 1 < len(remaining):
                 mcp_args["space_ids"] = remaining[i + 1]
                 i += 2
+            elif flag in ("--add-spaces", "-a") and i + 1 < len(remaining):
+                mcp_args["space_ids_add"] = remaining[i + 1]
+                i += 2
+            elif flag in ("--remove-spaces", "-r") and i + 1 < len(remaining):
+                mcp_args["space_ids_remove"] = remaining[i + 1]
+                i += 2
             elif flag in ("--email", "-e") and i + 1 < len(remaining):
                 mcp_args["email"] = remaining[i + 1]
                 i += 2
@@ -660,9 +667,20 @@ async def _handle_token(client, args, json_out):
                 i += 1
         if len(mcp_args) <= 1:
             show_error(
-                "Rien à mettre à jour. Utilisez --permissions, --space-ids et/ou --email."
+                "Rien à mettre à jour. Utilisez --permissions, --space-ids, "
+                "--add-spaces, --remove-spaces et/ou --email."
             )
             show_warning("Ex: token update sha256:a8c5 --email user@example.com")
+            show_warning("Ex: token update sha256:a8c5 -a new-space  (delta)")
+            return
+        # Garde-fou client : remplacement et delta incompatibles
+        if "space_ids" in mcp_args and (
+            "space_ids_add" in mcp_args or "space_ids_remove" in mcp_args
+        ):
+            show_error(
+                "--space-ids (remplacement) est incompatible avec "
+                "--add-spaces / --remove-spaces (delta)."
+            )
             return
         result = await client.call_tool("admin_update_token", mcp_args)
         show_success(result.get("message", "Token mis à jour")) if result.get(
@@ -670,10 +688,99 @@ async def _handle_token(client, args, json_out):
         ) == "ok" else show_error(result.get("message", "?"))
 
     elif sub == "list":
-        result = await client.call_tool("admin_list_tokens", {})
+        # Issue #13 : filtres optionnels --name-contains, --has-space, --no-revoked
+        list_args = {
+            "name_contains": "",
+            "has_space": "",
+            "include_revoked": True,
+        }
+        remaining = args[1:]
+        i = 0
+        while i < len(remaining):
+            flag = remaining[i]
+            if flag in ("--name-contains", "-n") and i + 1 < len(remaining):
+                list_args["name_contains"] = remaining[i + 1]
+                i += 2
+            elif flag in ("--has-space",) and i + 1 < len(remaining):
+                # Note: -s est déjà pris par --space-ids dans update; pas d'alias court ici
+                list_args["has_space"] = remaining[i + 1]
+                i += 2
+            elif flag == "--no-revoked":
+                list_args["include_revoked"] = False
+                i += 1
+            else:
+                i += 1
+        result = await client.call_tool("admin_list_tokens", list_args)
         (show_json if json_out else show_token_list)(result) if result.get(
             "status"
         ) == "ok" else show_error(result.get("message", "?"))
+
+    elif sub == "bulk-update":
+        # Issue #13 : admin_bulk_update_tokens
+        bulk_args = {
+            "names": "",
+            "name_contains": "",
+            "space_ids_add": "",
+            "space_ids_remove": "",
+        }
+        confirm = False
+        remaining = args[1:]
+        i = 0
+        while i < len(remaining):
+            flag = remaining[i]
+            if flag in ("--names",) and i + 1 < len(remaining):
+                bulk_args["names"] = remaining[i + 1]
+                i += 2
+            elif flag in ("--name-contains", "-n") and i + 1 < len(remaining):
+                bulk_args["name_contains"] = remaining[i + 1]
+                i += 2
+            elif flag in ("--add-spaces", "-a") and i + 1 < len(remaining):
+                bulk_args["space_ids_add"] = remaining[i + 1]
+                i += 2
+            elif flag in ("--remove-spaces", "-r") and i + 1 < len(remaining):
+                bulk_args["space_ids_remove"] = remaining[i + 1]
+                i += 2
+            elif flag in ("--permissions", "-p") and i + 1 < len(remaining):
+                perms = remaining[i + 1]
+                if not _validate_permissions(perms):
+                    show_error(f"Permissions invalides : '{perms}'")
+                    return
+                bulk_args["permissions"] = perms
+                i += 2
+            elif flag in ("--email", "-e") and i + 1 < len(remaining):
+                bulk_args["email"] = remaining[i + 1]
+                i += 2
+            elif flag == "--confirm":
+                confirm = True
+                i += 1
+            else:
+                i += 1
+        # Validations côté shell (le serveur revalide aussi)
+        if not bulk_args["names"] and not bulk_args["name_contains"]:
+            show_error("Au moins un filtre requis : --names ou --name-contains.")
+            return
+        if not (
+            bulk_args.get("space_ids_add")
+            or bulk_args.get("space_ids_remove")
+            or bulk_args.get("permissions")
+            or bulk_args.get("email")
+        ):
+            show_error(
+                "Au moins une opération requise : --add-spaces, --remove-spaces, "
+                "--permissions ou --email."
+            )
+            return
+        if not confirm:
+            show_warning(
+                "⚠️  Dry-run : ajoutez --confirm pour exécuter le bulk-update."
+            )
+            return
+        result = await client.call_tool("admin_bulk_update_tokens", bulk_args)
+        if result.get("status") == "ok":
+            from .display import show_bulk_update_result
+            (show_json if json_out else show_bulk_update_result)(result)
+        else:
+            show_error(result.get("message", "?"))
 
     elif sub == "revoke" and len(args) >= 2:
         result = await client.call_tool("admin_revoke_token", {"token_hash": args[1]})
@@ -707,7 +814,9 @@ async def _handle_token(client, args, json_out):
             show_error(result.get("message", "?"))
 
     else:
-        show_warning("Usage: token [create|update|list|revoke|delete|purge] ...")
+        show_warning(
+            "Usage: token [create|update|list|bulk-update|revoke|delete|purge] ..."
+        )
 
 
 async def _handle_graph(client, args, json_out):
@@ -879,10 +988,18 @@ async def run_shell(url: str, token: str):
         "-p",
         "--space-ids",
         "-s",
+        "--add-spaces",
+        "-a",
+        "--remove-spaces",
+        "-r",
+        "--name-contains",
+        "-n",
+        "--has-space",
+        "--no-revoked",
+        "--names",
         "--description",
         "-d",
         "--rules-file",
-        "-r",
         "--rules",
         "--owner",
         "-o",

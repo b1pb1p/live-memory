@@ -660,30 +660,76 @@ def token_create_cmd(ctx, name, permissions, space_ids, expires_in_days, email, 
     "--space-ids",
     "-s",
     default="",
-    help="Nouveaux espaces autorisés (virgules, vide=tous)",
+    help=(
+        "MODE REMPLACEMENT — nouveaux espaces autorisés (CSV, ou '*'/'all'). "
+        "⚠️ Remplace la liste complète : risque de révocation silencieuse. "
+        "Préférez --add-spaces / --remove-spaces pour un delta sûr."
+    ),
+)
+@click.option(
+    "--add-spaces",
+    "-a",
+    default="",
+    help=(
+        "MODE DELTA — espaces à ajouter (CSV). Idempotent. "
+        "Incompatible avec --space-ids. (issue #13)"
+    ),
+)
+@click.option(
+    "--remove-spaces",
+    "-r",
+    default="",
+    help=(
+        "MODE DELTA — espaces à retirer (CSV). Idempotent. "
+        "Incompatible avec --space-ids. (issue #13)"
+    ),
 )
 @click.option("--email", "-e", default="", help="Email du propriétaire")
 @click.option("--json", "-j", "jflag", is_flag=True)
 @click.pass_context
-def token_update_cmd(ctx, token_hash, permissions, space_ids, email, jflag):
+def token_update_cmd(
+    ctx, token_hash, permissions, space_ids, add_spaces, remove_spaces, email, jflag
+):
     """✏️  Mettre à jour un token (permissions, espaces, email).
 
     \b
     Exemples :
       token update sha256:a8c5 --email user@example.com
       token update sha256:a8c5 -p read,write
-      token update sha256:a8c5 -s "mon-projet" -e user@example.com
+      token update sha256:a8c5 -s "mon-projet"                 # remplace
+      token update sha256:a8c5 -a "new-space"                  # ajoute (delta)
+      token update sha256:a8c5 -a "new-a,new-b" -r "old"       # mix delta
     """
-    if not permissions and not space_ids and not email:
+    if (
+        not permissions
+        and not space_ids
+        and not add_spaces
+        and not remove_spaces
+        and not email
+    ):
         show_error(
-            "Rien à mettre à jour. Utilisez --permissions, --space-ids et/ou --email."
+            "Rien à mettre à jour. Utilisez --permissions, --space-ids, "
+            "--add-spaces, --remove-spaces et/ou --email."
         )
         return
+
+    # Garde-fou client (le serveur valide aussi, mais on évite l'aller-retour)
+    if space_ids and (add_spaces or remove_spaces):
+        show_error(
+            "--space-ids (remplacement) est incompatible avec "
+            "--add-spaces / --remove-spaces (delta). Choisissez l'un ou l'autre."
+        )
+        return
+
     args = {"token_hash": token_hash}
     if permissions:
         args["permissions"] = permissions
     if space_ids:
         args["space_ids"] = space_ids
+    if add_spaces:
+        args["space_ids_add"] = add_spaces
+    if remove_spaces:
+        args["space_ids_remove"] = remove_spaces
     if email:
         args["email"] = email
     _run_tool(
@@ -696,11 +742,200 @@ def token_update_cmd(ctx, token_hash, permissions, space_ids, email, jflag):
 
 
 @token_grp.command("list")
+@click.option(
+    "--name-contains",
+    "-n",
+    default="",
+    help="Filtrer par sous-chaîne dans le nom (case-insensitive). (issue #13)",
+)
+@click.option(
+    "--has-space",
+    "-s",
+    default="",
+    help="Filtrer les tokens autorisant ce space_id (match exact). (issue #13)",
+)
+@click.option(
+    "--no-revoked",
+    is_flag=True,
+    default=False,
+    help="Exclure les tokens révoqués du résultat. (issue #13)",
+)
 @click.option("--json", "-j", "jflag", is_flag=True)
 @click.pass_context
-def token_list_cmd(ctx, jflag):
-    """Lister les tokens."""
-    _run_tool(ctx, "admin_list_tokens", {}, show_token_list, jflag)
+def token_list_cmd(ctx, name_contains, has_space, no_revoked, jflag):
+    """Lister les tokens (avec filtres optionnels).
+
+    \b
+    Exemples :
+      token list
+      token list --name-contains agent
+      token list --has-space mon-projet
+      token list --has-space mon-projet --no-revoked
+    """
+    args = {
+        "name_contains": name_contains,
+        "has_space": has_space,
+        "include_revoked": not no_revoked,
+    }
+    _run_tool(ctx, "admin_list_tokens", args, show_token_list, jflag)
+
+
+@token_grp.command("bulk-update")
+@click.option(
+    "--names",
+    default="",
+    help="Liste CSV de noms exacts (ex: 'agent-laptop,agent-desktop').",
+)
+@click.option(
+    "--name-contains",
+    "-n",
+    default="",
+    help="Sous-chaîne dans le nom (case-insensitive).",
+)
+@click.option(
+    "--add-spaces",
+    "-a",
+    default="",
+    help="Espaces à ajouter (CSV). Idempotent.",
+)
+@click.option(
+    "--remove-spaces",
+    "-r",
+    default="",
+    help="Espaces à retirer (CSV). Idempotent.",
+)
+@click.option(
+    "--permissions",
+    "-p",
+    type=VALID_PERMISSIONS,
+    default=None,
+    help="Nouvelles permissions à appliquer à tous les tokens sélectionnés.",
+)
+@click.option(
+    "--email",
+    "-e",
+    default="",
+    help="Nouvel email à appliquer à tous les tokens sélectionnés.",
+)
+@click.option(
+    "--confirm",
+    is_flag=True,
+    default=False,
+    help="Confirmer l'application (sinon, dry-run client).",
+)
+@click.option("--json", "-j", "jflag", is_flag=True)
+@click.pass_context
+def token_bulk_update_cmd(
+    ctx,
+    names,
+    name_contains,
+    add_spaces,
+    remove_spaces,
+    permissions,
+    email,
+    confirm,
+    jflag,
+):
+    """🔁 Mettre à jour plusieurs tokens en une seule opération (issue #13).
+
+    \b
+    Filtres (au moins un requis) : --names ou --name-contains.
+    Opérations (au moins une requise) : --add-spaces, --remove-spaces,
+    --permissions, --email.
+
+    \b
+    Exemples :
+      # Ajouter "new-project" à tous les agents
+      token bulk-update --name-contains agent --add-spaces new-project --confirm
+
+      # Migrer 3 tokens explicites
+      token bulk-update --names "a,b,c" -a new-space -r old-space --confirm
+
+      # Dry-run (par défaut sans --confirm) : affiche ce qui serait fait
+      token bulk-update --name-contains agent --add-spaces new-project
+    """
+    if not names and not name_contains:
+        show_error(
+            "Au moins un filtre requis : --names ou --name-contains. "
+            "Voir 'token bulk-update --help' pour les exemples."
+        )
+        return
+    if not (add_spaces or remove_spaces or permissions or email):
+        show_error(
+            "Au moins une opération requise : --add-spaces, --remove-spaces, "
+            "--permissions ou --email."
+        )
+        return
+
+    if not confirm:
+        show_warning(
+            "⚠️  Dry-run : aucune modification ne sera appliquée. "
+            "Ajoutez --confirm pour exécuter."
+        )
+        # En dry-run, on simule en faisant un list filtré pour montrer les cibles
+        list_args = {
+            "name_contains": name_contains,
+            "has_space": "",
+            "include_revoked": False,  # bulk update ignore généralement les révoqués matchés
+        }
+        # Note : le serveur ne filtre pas par "names" — on doit refaire le filtre côté client
+        # pour l'affichage. C'est OK car c'est juste un aperçu.
+        names_set = {n.strip() for n in names.split(",") if n.strip()}
+
+        async def _dry_run():
+            from .client import MCPClient
+            client = MCPClient(ctx.obj["url"], ctx.obj["token"])
+            try:
+                res = await client.call_tool("admin_list_tokens", list_args)
+                if res.get("status") != "ok":
+                    show_error(res.get("message", "?"))
+                    return
+                tokens = res.get("tokens", [])
+                if names_set:
+                    tokens = [t for t in tokens if t["name"] in names_set]
+                if not tokens:
+                    console.print("[yellow]Aucun token ne matche le filtre.[/yellow]")
+                    return
+                console.print(
+                    f"[bold]Cibles potentielles ({len(tokens)} token(s)) :[/bold]"
+                )
+                for t in tokens:
+                    console.print(
+                        f"  • [cyan]{t['name']}[/cyan]  "
+                        f"spaces={t.get('space_ids', [])}  "
+                        f"perms={t.get('permissions', [])}"
+                    )
+                console.print(
+                    "\n[dim]Relancez avec --confirm pour appliquer les modifications.[/dim]"
+                )
+            except Exception as e:
+                show_error(f"Connexion impossible: {e}")
+
+        asyncio.run(_dry_run())
+        return
+
+    args = {
+        "names": names,
+        "name_contains": name_contains,
+        "space_ids_add": add_spaces,
+        "space_ids_remove": remove_spaces,
+    }
+    if permissions:
+        args["permissions"] = permissions
+    if email:
+        args["email"] = email
+
+    def _on_success(result):
+        from .display import show_bulk_update_result
+        show_bulk_update_result(result)
+
+    _run_tool(
+        ctx,
+        "admin_bulk_update_tokens",
+        args,
+        _on_success,
+        jflag,
+    )
 
 
 @token_grp.command("revoke")

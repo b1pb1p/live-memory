@@ -1,17 +1,18 @@
 # -*- coding: utf-8 -*-
 """
-Outils MCP — Catégorie Admin (7 outils).
+Outils MCP — Catégorie Admin (8 outils).
 
 Gestion des tokens d'authentification et maintenance.
 
 Permissions :
-    - admin_create_token  👑 (admin) — Crée un token
-    - admin_list_tokens   👑 (admin) — Liste les tokens
-    - admin_revoke_token  👑 (admin) — Révoque un token
-    - admin_delete_token  👑 (admin) — Supprime physiquement un token
-    - admin_purge_tokens  👑 (admin) — Purge en masse les tokens
-    - admin_update_token  👑 (admin) — Modifie un token
-    - admin_gc_notes      👑 (admin) — GC des notes orphelines
+    - admin_create_token       👑 (admin) — Crée un token
+    - admin_list_tokens        👑 (admin) — Liste les tokens (avec filtres)
+    - admin_revoke_token       👑 (admin) — Révoque un token
+    - admin_delete_token       👑 (admin) — Supprime physiquement un token
+    - admin_purge_tokens       👑 (admin) — Purge en masse les tokens
+    - admin_update_token       👑 (admin) — Modifie un token (remplacement ou delta)
+    - admin_bulk_update_tokens 👑 (admin) — Bulk update : delta sur N tokens
+    - admin_gc_notes           👑 (admin) — GC des notes orphelines
 
 Tous les outils admin requièrent la permission "admin".
 Voir AUTH_AND_COLLABORATION.md pour le modèle de tokens.
@@ -26,13 +27,13 @@ from pydantic import Field
 
 def register(mcp: FastMCP) -> int:
     """
-    Enregistre les 7 outils admin sur l'instance MCP.
+    Enregistre les 8 outils admin sur l'instance MCP.
 
     Args:
         mcp: Instance FastMCP
 
     Returns:
-        Nombre d'outils enregistrés (7)
+        Nombre d'outils enregistrés (8)
     """
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=False))
@@ -116,15 +117,53 @@ def register(mcp: FastMCP) -> int:
             return safe_error(e, "admin")
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
-    async def admin_list_tokens() -> dict:
+    async def admin_list_tokens(
+        name_contains: Annotated[
+            str,
+            Field(
+                default="",
+                description=(
+                    "Filtre les tokens dont le nom contient cette sous-chaîne "
+                    "(insensible à la casse). Vide = pas de filtre. (issue #13)"
+                ),
+            ),
+        ] = "",
+        has_space: Annotated[
+            str,
+            Field(
+                default="",
+                description=(
+                    "Filtre les tokens dont `space_ids` contient ce `space_id` "
+                    "(match exact, sensible à la casse). Vide = pas de filtre. "
+                    "Utile pour 'qui a accès à <space> ?' (issue #13)"
+                ),
+            ),
+        ] = "",
+        include_revoked: Annotated[
+            bool,
+            Field(
+                default=True,
+                description=(
+                    "Si False, exclut les tokens révoqués du résultat. "
+                    "Défaut True (rétrocompat). (issue #13)"
+                ),
+            ),
+        ] = True,
+    ) -> dict:
         """
-        Liste tous les tokens (métadonnées seulement, jamais en clair).
+        Liste les tokens (métadonnées seulement, jamais en clair).
 
-        Retourne le nom, les permissions, les espaces autorisés,
-        le hash tronqué, et le statut (révoqué, expiré).
+        Filtres optionnels (issue #13) appliqués in-memory côté serveur,
+        évitant de charger toute la liste côté client juste pour filtrer.
+
+        Args:
+            name_contains: Sous-chaîne dans le nom (case-insensitive).
+            has_space: Filtre les tokens autorisant ce space_id.
+            include_revoked: Inclure les tokens révoqués (défaut True).
 
         Returns:
-            Liste des tokens avec métadonnées
+            Liste des tokens avec métadonnées. Bloc `filters` ajouté
+            si au moins un filtre est actif.
         """
         from ..auth.context import check_admin_permission
         from ..core.tokens import get_token_service
@@ -134,7 +173,11 @@ def register(mcp: FastMCP) -> int:
             if admin_err:
                 return admin_err
 
-            return await get_token_service().list_tokens()
+            return await get_token_service().list_tokens(
+                name_contains=name_contains,
+                has_space=has_space,
+                include_revoked=include_revoked,
+            )
         except Exception as e:
             from ..auth.context import safe_error
 
@@ -272,9 +315,11 @@ def register(mcp: FastMCP) -> int:
             Field(
                 default="",
                 description=(
-                    "Nouveaux espaces autorisés, séparés par virgules. "
+                    "MODE REMPLACEMENT — nouveaux espaces autorisés (CSV). "
                     "Vide = pas de changement. Utilisez '*' ou 'all' pour un "
-                    "snapshot des espaces existants (cohérent avec admin_create_token)."
+                    "snapshot des espaces existants. ⚠️ Remplace la liste "
+                    "complète : risque de révocation silencieuse si on oublie "
+                    "un space. Pour un ajout sûr, préférez `space_ids_add`."
                 ),
             ),
         ] = "",
@@ -292,17 +337,53 @@ def register(mcp: FastMCP) -> int:
                 description="Nouvel email du propriétaire (vide = pas de changement)",
             ),
         ] = "",
+        space_ids_add: Annotated[
+            str,
+            Field(
+                default="",
+                description=(
+                    "MODE DELTA — espaces à ajouter (CSV). Idempotent : "
+                    "no-op si déjà présent. Incompatible avec `space_ids` "
+                    "(remplacement). Sucre '*' / 'all' interdit ici. (issue #13)"
+                ),
+            ),
+        ] = "",
+        space_ids_remove: Annotated[
+            str,
+            Field(
+                default="",
+                description=(
+                    "MODE DELTA — espaces à retirer (CSV). Idempotent : "
+                    "no-op si absent. Appliqué AVANT `space_ids_add` quand "
+                    "les deux sont fournis. (issue #13)"
+                ),
+            ),
+        ] = "",
     ) -> dict:
         """
-        Met à jour les permissions ou espaces autorisés d'un token.
+        Met à jour un token : permissions, email, et/ou ``space_ids``.
+
+        Trois modes pour les ``space_ids`` (issue #13) :
+
+        1. Pas de changement (aucun des 3 paramètres ``space_ids*`` fournis).
+        2. Remplacement complet (legacy) : ``space_ids`` non vide.
+        3. Delta additif : ``space_ids_add`` et/ou ``space_ids_remove``.
+           Idempotent. ``_remove`` appliqué avant ``_add``.
+
+        Les modes (2) et (3) sont mutuellement exclusifs.
 
         Args:
-            token_hash: Hash tronqué du token (depuis admin_list_tokens)
-            space_ids: Nouveaux espaces (vide = pas de changement)
-            permissions: Nouvelles permissions (vide = pas de changement)
+            token_hash: Hash du token (depuis admin_list_tokens)
+            space_ids: Mode remplacement (CSV ou ``*``/``all``).
+            permissions: Nouvelles permissions (vide = pas de changement).
+            email: Nouvel email (vide = pas de changement).
+            space_ids_add: Mode delta — espaces à ajouter (CSV).
+            space_ids_remove: Mode delta — espaces à retirer (CSV).
 
         Returns:
-            Confirmation de mise à jour
+            Confirmation avec, en mode delta, ``space_ids_before``,
+            ``space_ids_after``, ``space_ids_added``, ``space_ids_removed``,
+            ``space_ids_noop``. ``warning_no_access`` si le token devient muet.
         """
         from ..auth.context import check_admin_permission
         from ..core.tokens import get_token_service
@@ -317,6 +398,120 @@ def register(mcp: FastMCP) -> int:
                 space_ids=space_ids,
                 permissions=permissions,
                 email=email,
+                space_ids_add=space_ids_add,
+                space_ids_remove=space_ids_remove,
+            )
+        except Exception as e:
+            from ..auth.context import safe_error
+
+            return safe_error(e, "admin")
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=True))
+    async def admin_bulk_update_tokens(
+        names: Annotated[
+            str,
+            Field(
+                default="",
+                description=(
+                    "Liste CSV de noms de tokens exacts à matcher "
+                    "(ex: 'agent-laptop,agent-desktop,agent-ci'). "
+                    "Combinable avec `name_contains`. Au moins un des deux requis."
+                ),
+            ),
+        ] = "",
+        name_contains: Annotated[
+            str,
+            Field(
+                default="",
+                description=(
+                    "Sous-chaîne (case-insensitive) à matcher dans le nom "
+                    "des tokens (ex: 'agent'). Combinable avec `names`. "
+                    "Au moins un filtre requis."
+                ),
+            ),
+        ] = "",
+        permissions: Annotated[
+            str,
+            Field(
+                default="",
+                description=(
+                    "Nouvelles permissions à appliquer aux tokens sélectionnés "
+                    "(CSV : 'read', 'read,write', 'read,write,admin'). "
+                    "Vide = pas de changement."
+                ),
+            ),
+        ] = "",
+        email: Annotated[
+            str,
+            Field(
+                default="",
+                description="Nouvel email à appliquer (vide = pas de changement).",
+            ),
+        ] = "",
+        space_ids_add: Annotated[
+            str,
+            Field(
+                default="",
+                description=(
+                    "Spaces à ajouter (CSV). Idempotent. Sucre '*'/'all' interdit."
+                ),
+            ),
+        ] = "",
+        space_ids_remove: Annotated[
+            str,
+            Field(
+                default="",
+                description=(
+                    "Spaces à retirer (CSV). Idempotent. Sucre '*'/'all' interdit."
+                ),
+            ),
+        ] = "",
+    ) -> dict:
+        """
+        Met à jour plusieurs tokens en une seule opération (issue #13).
+
+        Workflow typique : autoriser un nouveau space sur N agents (le même
+        agent déployé sur plusieurs postes) sans avoir à reconstruire la
+        liste complète des `space_ids` de chacun ⇒ élimine la classe de
+        bugs "révocation silencieuse par remplacement complet".
+
+        ⚠️ **Volontairement** : pas de mode "remplacement complet" en bulk
+        (trop dangereux à propager sur N tokens). Seul le mode delta est
+        exposé pour les `space_ids`.
+
+        **Atomicité** : `tokens.json` est un fichier S3 unique sauvé d'un
+        bloc sous lock. Validation et application en mémoire, puis une seule
+        écriture finale. En cas d'erreur, aucune modification persistée.
+
+        Filtres (au moins un requis) :
+            - `names` : liste exacte (CSV).
+            - `name_contains` : sous-chaîne (case-insensitive).
+
+        Opérations (au moins une requise) :
+            - `permissions`, `email` : appliqués à tous les tokens matchés.
+            - `space_ids_add`, `space_ids_remove` : deltas additifs idempotents.
+
+        Returns:
+            ``{"status": "ok", "updated": N, "tokens": [{name, hash,
+            before: {...}, after: {...}, space_ids_added: [...], ...}],
+            "filters": {...}, "operations": {...}}``.
+            Si aucun token ne matche : `updated=0`, statut `ok` (pas une erreur).
+        """
+        from ..auth.context import check_admin_permission
+        from ..core.tokens import get_token_service
+
+        try:
+            admin_err = check_admin_permission()
+            if admin_err:
+                return admin_err
+
+            return await get_token_service().bulk_update_tokens(
+                names=names,
+                name_contains=name_contains,
+                permissions=permissions,
+                email=email,
+                space_ids_add=space_ids_add,
+                space_ids_remove=space_ids_remove,
             )
         except Exception as e:
             from ..auth.context import safe_error
@@ -420,4 +615,4 @@ def register(mcp: FastMCP) -> int:
 
             return safe_error(e, "admin")
 
-    return 7  # Nombre d'outils enregistrés
+    return 8  # Nombre d'outils enregistrés

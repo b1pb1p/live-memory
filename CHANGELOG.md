@@ -5,6 +5,67 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
 ---
 
+## [1.8.0] — 2026-05-11
+
+### Ajouté (issue #13 — workflow admin tokens)
+
+- **`admin_update_token` : mode delta additif** — Nouveaux paramètres `space_ids_add` et `space_ids_remove` (CSV) pour ajouter/retirer des spaces à un token **sans avoir à reconstruire la liste complète**. Élimine la classe de bugs "révocation silencieuse par remplacement" : ajouter un nouveau space à un token qui en a déjà 7 ne demande plus de relire les 7 actuels. Idempotent (no-op si déjà présent/absent). `_remove` est appliqué avant `_add` (sémantique documentée).
+  - Le mode legacy `space_ids` (remplacement complet) reste supporté pour la rétrocompat. Combiner remplacement et delta est **rejeté** avec une erreur explicite.
+  - Le sucre `*`/`all` n'est **pas** accepté dans `_add`/`_remove` (sémantique ambiguë sur un delta).
+  - La réponse en mode delta inclut `space_ids_before`, `space_ids_after`, `space_ids_added`, `space_ids_removed`, `space_ids_noop` pour traçabilité.
+- **`admin_bulk_update_tokens` (8e outil admin, 40e outil MCP global)** — Met à jour N tokens en une seule opération, avec atomicité naturelle (tokens.json est un fichier S3 unique sauvé d'un bloc sous lock). En cas d'erreur de validation, aucune modification n'est persistée.
+  - **Filtres** (au moins un requis) : `names` (CSV exacts) ou `name_contains` (sous-chaîne, case-insensitive). Combinables en AND.
+  - **Opérations** (au moins une requise) : `space_ids_add`, `space_ids_remove`, `permissions`, `email`.
+  - **Volontairement** : pas de mode `space_ids` (remplacement) — trop dangereux à propager sur N tokens.
+  - Retour détaillé `{updated, tokens: [{name, hash, before, after, ...}], filters, operations}` pour audit post-opération.
+- **`admin_list_tokens` : filtres serveur** — Nouveaux paramètres `name_contains`, `has_space`, `include_revoked` (défaut `True` pour rétrocompat). Évite de charger toute la liste côté client pour filtrer quelques tokens.
+
+### CLI / Shell
+
+- **CLI Click** :
+  - `token update <hash>` : nouveaux flags `--add-spaces` / `-a`, `--remove-spaces` / `-r`. Garde-fou client pour rejeter `--space-ids` combiné avec un delta.
+  - `token list` : nouveaux flags `--name-contains` / `-n`, `--has-space` / `-s`, `--no-revoked`.
+  - **Nouvelle commande** `token bulk-update` avec dry-run par défaut (affichage des cibles via filtre `list`), `--confirm` requis pour appliquer.
+- **Shell interactif** :
+  - `token update` : flags `--add-spaces` / `--remove-spaces`.
+  - `token list` : flags `--name-contains` / `--has-space` / `--no-revoked`.
+  - Nouvelle sous-commande `token bulk-update` (avec dry-run).
+  - Autocomplétion enrichie pour tous les nouveaux flags.
+- **Affichage Rich** : nouvelle fonction `show_bulk_update_result()` qui affiche un tableau `before/after` par token modifié (ajouts, retraits, no-op).
+
+### Tests (anti-complaisance — focus pièges réels)
+
+- **50 nouveaux tests unitaires** (`tests/test_tokens.py`, total : 70 tests, 100% PASS) — chaque test cible un **piège concret** :
+  - **Helpers** : `_apply_space_delta` (idempotence, ordre `remove avant add`, non-mutation input — anti-aliasing Python, doublon dans `to_remove` — anti `ValueError`), `_parse_csv_spaces` (dedup + strip), `_validate_update_mutex` (matrice paramétrée de **12 cas** combinant replace/add/remove/sucre).
+  - **Atomicité `update_token`** : 4 scénarios d'échec où `_save_store` NE doit PAS être appelé (mutex replace+delta, sucre `*` dans delta, hash inconnu, permissions invalides combinées avec delta). Si un futur refactor place la validation après l'écriture, ces tests le détectent.
+  - **Cohérence `bulk_update` before/after ↔ store** : test explicite qu'`after` reflète l'état mémoire réel (détecte un bug d'alias mutable où `before` finirait égal à `after`).
+  - **Isolation `bulk_update_by_names_exact`** : 3 tokens, 2 matchés, vérifie que le 3e n'est PAS touché.
+  - **AND vs OR sur filtres** : 2 tests construits pour piéger une logique OR (`list_tokens_combined_filters_are_AND`, `bulk_update_combined_filters_AND`).
+  - **Idempotence E2E** : 2 appels successifs `bulk_update` avec même `space_ids_add` → 2e en no-op total, **un seul** "new-space" final (pas de doublon).
+- **Total suite : 136 tests PASS** (aucune régression sur les 86 tests pré-existants).
+
+### Décisions de design (challengeables)
+
+- **Pas de remplacement complet en bulk** : volontairement absent. Propager un `space_ids="x,y"` sur N tokens est une opération destructive trop facile à mal utiliser. Si le besoin émerge, il faudra l'ajouter explicitement avec un garde-fou (ex: `--allow-replace`).
+- **Sucre `*`/`all` interdit dans les deltas** : `space_ids_add="*"` voudrait dire "ajouter tous les spaces existants" — mais ce serait un snapshot figé incohérent avec la sémantique stricte v1.5.0. Pour cet usage, utiliser `space_ids="*"` en remplacement complet (sur un seul token).
+- **`include_revoked=True` par défaut** : préserve strictement le comportement antérieur de `admin_list_tokens`. Aucun script existant n'est cassé.
+- **Atomicité = naturelle** : pas de logique de rollback complexe. `tokens.json` est mono-fichier S3 — toutes les modifs sont en mémoire, puis une seule écriture finale. Si une validation échoue (permissions invalides détectées avant `_save_store`), rien n'est persisté.
+
+### Fichiers modifiés
+
+| Fichier | Changements |
+| --- | --- |
+| `src/live_mem/core/tokens.py` | Helpers `_parse_csv_spaces`, `_validate_update_mutex`, `_apply_space_delta`. Enrichissement de `update_token` (mode delta) et `list_tokens` (filtres). Nouvelle méthode `bulk_update_tokens`. |
+| `src/live_mem/tools/admin.py` | Enrichissement `admin_update_token` (paramètres `space_ids_add`/`_remove`), `admin_list_tokens` (3 filtres). Nouveau tool `admin_bulk_update_tokens`. Compteur 7 → 8. |
+| `scripts/cli/commands.py` | Enrichissement `token update`, `token list`. Nouvelle commande `token bulk-update` avec dry-run client. |
+| `scripts/cli/display.py` | Nouvelle fonction `show_bulk_update_result()`. Affichage des filtres actifs dans `show_token_list()`. |
+| `scripts/cli/shell.py` | Handler `_handle_token` enrichi : flags delta, filtres list, nouvelle sous-commande `bulk-update`. Autocomplétion mise à jour. |
+| `tests/test_tokens.py` | **+42 tests** (helpers, update delta, list filtres, bulk_update). |
+| `README.md`, `README.en.md`, `DESIGN/live-mem/ARCHITECTURE.md`, `DESIGN/live-mem/MCP_TOOLS_SPEC.md`, `DESIGN/live-mem/DEPLOIEMENT_PRODUCTION.md` | Compteur 39 → 40 outils MCP. |
+| `VERSION`, `__init__.py`, `CHANGELOG.md` | Bump 1.7.4 → 1.8.0. |
+
+---
+
 ## [1.7.4] — 2026-05-10
 
 ### Ajouté

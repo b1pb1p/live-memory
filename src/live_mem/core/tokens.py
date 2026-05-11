@@ -267,16 +267,50 @@ class TokenService:
 
         return response
 
-    async def list_tokens(self) -> dict:
+    async def list_tokens(
+        self,
+        name_contains: str = "",
+        has_space: str = "",
+        include_revoked: bool = True,
+    ) -> dict:
         """
-        Liste tous les tokens (métadonnées seulement, jamais le hash complet).
+        Liste les tokens (métadonnées seulement, jamais le hash complet).
+
+        Filtres optionnels (issue #13) appliqués in-memory sur la liste
+        chargée depuis S3. Tous les defaults reproduisent le comportement
+        antérieur (rétrocompat stricte).
+
+        Args:
+            name_contains: Sous-chaîne recherchée dans ``token.name``
+                (insensible à la casse). Vide = pas de filtre.
+            has_space: Filtre les tokens dont ``space_ids`` contient
+                exactement ce ``space_id`` (match exact, sensible à la casse).
+                Vide = pas de filtre.
+            include_revoked: Si ``False``, exclut les tokens révoqués
+                du résultat. Défaut ``True`` (comportement historique).
 
         Returns:
-            {"status": "ok", "tokens": [...], "total": N}
+            ``{"status": "ok", "tokens": [...], "total": N, "filters": {...}}``
+            (le bloc ``filters`` n'est ajouté que si au moins un filtre actif).
         """
         store = await self._load_store()
+
+        # Préparation des filtres
+        needle = name_contains.strip().lower() if name_contains else ""
+        space_needle = has_space.strip() if has_space else ""
+
         tokens_list = []
         for t in store.tokens:
+            # Filtre revoked
+            if not include_revoked and t.revoked:
+                continue
+            # Filtre name_contains (case-insensitive)
+            if needle and needle not in t.name.lower():
+                continue
+            # Filtre has_space (match exact)
+            if space_needle and space_needle not in t.space_ids:
+                continue
+
             tokens_list.append(
                 {
                     "hash": t.hash,  # Hash complet pour identification
@@ -291,7 +325,20 @@ class TokenService:
                 }
             )
 
-        return {"status": "ok", "tokens": tokens_list, "total": len(tokens_list)}
+        response = {"status": "ok", "tokens": tokens_list, "total": len(tokens_list)}
+
+        # Trace des filtres appliqués (utile pour debug / audit)
+        active_filters = {}
+        if name_contains:
+            active_filters["name_contains"] = name_contains
+        if has_space:
+            active_filters["has_space"] = has_space
+        if not include_revoked:
+            active_filters["include_revoked"] = False
+        if active_filters:
+            response["filters"] = active_filters
+
+        return response
 
     async def revoke_token(self, token_hash: str) -> dict:
         """
@@ -380,45 +427,187 @@ class TokenService:
             "message": f"{deleted_count} token(s) supprimé(s) physiquement",
         }
 
+    # ─────────────────────────────────────────────────────────
+    # Helpers privés pour les opérations de mise à jour (issue #13)
+    # ─────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _parse_csv_spaces(value: str) -> list[str]:
+        """Parse une chaîne CSV en liste dédupliquée, ordre préservé."""
+        if not value:
+            return []
+        seen: set[str] = set()
+        out: list[str] = []
+        for raw in value.split(","):
+            sid = raw.strip()
+            if not sid:
+                continue
+            if sid in seen:
+                continue
+            seen.add(sid)
+            out.append(sid)
+        return out
+
+    @staticmethod
+    def _validate_update_mutex(
+        space_ids: str, space_ids_add: str, space_ids_remove: str
+    ) -> dict | None:
+        """
+        Vérifie l'exclusion mutuelle entre `space_ids` (remplacement) et
+        `space_ids_add`/`space_ids_remove` (delta additif) — issue #13.
+
+        Le sucre ``"*"``/``"all"`` reste valable uniquement pour
+        ``space_ids`` (remplacement par snapshot). Il est interdit dans
+        ``_add``/``_remove`` (un delta "tout ajouter / tout retirer" n'a
+        pas de sémantique claire et serait piégeur).
+
+        Retourne ``None`` si OK, sinon un dict d'erreur.
+        """
+        replace_active = bool((space_ids or "").strip())
+        delta_active = bool((space_ids_add or "").strip()) or bool(
+            (space_ids_remove or "").strip()
+        )
+
+        if replace_active and delta_active:
+            return {
+                "status": "error",
+                "message": (
+                    "Paramètres incompatibles : `space_ids` (remplacement) "
+                    "et `space_ids_add`/`space_ids_remove` (delta additif) "
+                    "ne peuvent pas être combinés. Choisissez l'un ou l'autre."
+                ),
+            }
+
+        # Interdiction du sucre "*"/"all" dans les deltas (décision issue #13).
+        for label, value in (
+            ("space_ids_add", space_ids_add),
+            ("space_ids_remove", space_ids_remove),
+        ):
+            stripped = (value or "").strip().lower()
+            if stripped in ("*", "all"):
+                return {
+                    "status": "error",
+                    "message": (
+                        f"`{label}` n'accepte pas le sucre '*' / 'all' "
+                        "(sémantique ambiguë sur un delta). Listez les "
+                        "espaces explicitement ou utilisez `space_ids='*'` "
+                        "pour un remplacement complet."
+                    ),
+                }
+
+        return None
+
+    @staticmethod
+    def _apply_space_delta(
+        current: list[str], to_add: list[str], to_remove: list[str]
+    ) -> tuple[list[str], list[str], list[str], list[str]]:
+        """
+        Applique un delta additif sur une liste de space_ids.
+
+        Sémantique :
+        - ``to_add`` : chaque entrée non déjà présente est ajoutée.
+        - ``to_remove`` : chaque entrée présente est retirée.
+        - Idempotent : appels répétés ⇒ même résultat.
+        - L'ordre relatif des entrées existantes est préservé.
+        - ``_remove`` est appliqué AVANT ``_add`` (permet "remplacer X par Y"
+          via `_add=Y,_remove=X` même si X==Y → effet net = présent).
+
+        Returns:
+            Tuple ``(new_list, actually_added, actually_removed, noop)`` :
+
+            - ``new_list`` : liste résultante
+            - ``actually_added`` : entrées effectivement ajoutées
+            - ``actually_removed`` : entrées effectivement retirées
+            - ``noop`` : entrées demandées mais sans effet (déjà
+              présentes pour ``_add`` ou absentes pour ``_remove``)
+        """
+        actually_removed: list[str] = []
+        noop: list[str] = []
+
+        # Phase 1 : retraits
+        working = list(current)
+        for sid in to_remove:
+            if sid in working:
+                working.remove(sid)
+                actually_removed.append(sid)
+            else:
+                noop.append(f"remove:{sid}")
+
+        # Phase 2 : ajouts (en tête de liste préservée, append en queue)
+        actually_added: list[str] = []
+        for sid in to_add:
+            if sid in working:
+                noop.append(f"add:{sid}")
+            else:
+                working.append(sid)
+                actually_added.append(sid)
+
+        return working, actually_added, actually_removed, noop
+
     async def update_token(
         self,
         token_hash: str,
         space_ids: str = "",
         permissions: str = "",
         email: str = "",
+        space_ids_add: str = "",
+        space_ids_remove: str = "",
     ) -> dict:
         """
-        Met à jour les permissions ou space_ids d'un token.
+        Met à jour un token : permissions, email, et/ou ``space_ids``.
 
-        VULN-03 fix : utilise _find_token_by_hash pour une correspondance
-        sécurisée (min 16 chars, détection d'ambiguïté).
+        **Trois modes pour ``space_ids``** (issue #13) :
 
-        Review #12 fix : ``space_ids`` accepte désormais ``"*"`` ou ``"all"``
-        (snapshot des espaces existants), aligné avec ``create_token``.
-        Quand l'opération aboutit à un token "muet" (non-admin avec
-        space_ids=[]), un ``warning_no_access`` est ajouté à la réponse.
+        1. **Pas de changement** : aucun des trois paramètres
+           ``space_ids``/``space_ids_add``/``space_ids_remove`` n'est fourni.
+        2. **Remplacement complet** (legacy) : ``space_ids`` non vide.
+           Accepte ``"*"``/``"all"`` (snapshot) ou une liste CSV.
+        3. **Delta additif** (issue #13) : ``space_ids_add`` et/ou
+           ``space_ids_remove`` non vides. Idempotent : ajouter un space
+           déjà présent (ou retirer un absent) est un no-op. ``_remove``
+           est appliqué avant ``_add``.
+
+        Les modes (2) et (3) sont **mutuellement exclusifs** (erreur 400 si
+        on les combine). Le sucre ``"*"``/``"all"`` n'est PAS supporté
+        dans ``_add``/``_remove`` (sémantique ambiguë sur un delta).
+
+        VULN-03 fix : ``_find_token_by_hash`` (min 16 chars, ambiguïté
+        détectée). Review #12 : ``warning_no_access`` ajouté si le token
+        résultant est muet (non-admin avec space_ids=[]).
 
         Args:
             token_hash: Hash du token (min 16 chars de préfixe)
-            space_ids: Nouveaux espaces autorisés.
-
-                - ``""`` (vide) → pas de changement.
-                - ``"a,b"`` → liste explicite.
-                - ``"*"`` ou ``"all"`` → snapshot des espaces existants.
+            space_ids: Mode remplacement. ``""`` = pas de changement.
             permissions: Nouvelles permissions (vide = pas de changement)
+            email: Nouvel email (vide = pas de changement)
+            space_ids_add: Mode delta — espaces à ajouter (CSV).
+            space_ids_remove: Mode delta — espaces à retirer (CSV).
 
         Returns:
-            ``{"status": "ok"}`` ou erreur. Si ``space_ids`` modifié et que
-            le résultat est un token muet (non-admin sans aucun space),
-            la réponse contient un champ ``warning_no_access``.
+            ``{"status": "ok", ...}`` avec, en mode delta, les champs
+            ``space_ids_added``, ``space_ids_removed``, ``space_ids_noop``,
+            ``space_ids_before``, ``space_ids_after``. ``warning_no_access``
+            si le token devient muet.
         """
+        # Validation de l'exclusion mutuelle (avant toute lecture S3).
+        mutex_err = self._validate_update_mutex(
+            space_ids, space_ids_add, space_ids_remove
+        )
+        if mutex_err:
+            return mutex_err
+
         # Pré-résoudre le sucre "*"/"all" hors du lock pour éviter
         # de tenir le verrou pendant un appel S3 (list_spaces).
         space_ids_stripped = (space_ids or "").strip()
-        new_space_ids: Optional[list[str]] = None
+        new_space_ids: Optional[list[str]] = None  # mode remplacement
         snapshot_used = False
         if space_ids_stripped:
             new_space_ids, snapshot_used = await self._resolve_space_ids(space_ids)
+
+        # Parse des deltas (mode additif)
+        add_list = self._parse_csv_spaces(space_ids_add)
+        remove_list = self._parse_csv_spaces(space_ids_remove)
+        delta_mode = bool(add_list) or bool(remove_list)
 
         async with get_lock_manager().tokens:
             store = await self._load_store()
@@ -441,12 +630,28 @@ class TokenService:
             if err:
                 return err
 
+            # Snapshot du before (pour traçabilité delta)
+            before_space_ids = list(token.space_ids)
+
+            actually_added: list[str] = []
+            actually_removed: list[str] = []
+            noop_entries: list[str] = []
+
             if permissions:
                 token.permissions = [
                     p.strip() for p in permissions.split(",") if p.strip()
                 ]
             if new_space_ids is not None:
+                # Mode remplacement complet
                 token.space_ids = new_space_ids
+            elif delta_mode:
+                # Mode delta additif
+                (
+                    token.space_ids,
+                    actually_added,
+                    actually_removed,
+                    noop_entries,
+                ) = self._apply_space_delta(token.space_ids, add_list, remove_list)
             if email:
                 token.email = email
 
@@ -461,9 +666,11 @@ class TokenService:
             "message": f"Token '{updated_name}' mis à jour",
         }
 
+        space_ids_touched = (new_space_ids is not None) or delta_mode
+
         # Review #12 : signaler un token muet (cohérent avec create_token)
         # uniquement si space_ids a été touché par cet appel.
-        if new_space_ids is not None:
+        if space_ids_touched:
             is_admin = "admin" in updated_perms
             if not is_admin and not updated_space_ids:
                 response["warning_no_access"] = self._muted_token_warning()
@@ -477,7 +684,202 @@ class TokenService:
                 "automatiquement ajoutés."
             )
 
+        if delta_mode:
+            response["mode"] = "delta"
+            response["space_ids_before"] = before_space_ids
+            response["space_ids_after"] = updated_space_ids
+            response["space_ids_added"] = actually_added
+            response["space_ids_removed"] = actually_removed
+            if noop_entries:
+                response["space_ids_noop"] = noop_entries
+
         return response
+
+    async def bulk_update_tokens(
+        self,
+        names: str = "",
+        name_contains: str = "",
+        permissions: str = "",
+        email: str = "",
+        space_ids_add: str = "",
+        space_ids_remove: str = "",
+    ) -> dict:
+        """
+        Met à jour plusieurs tokens en une seule opération (issue #13).
+
+        **Atomicité** : tokens.json est un fichier S3 unique chargé/sauvé
+        sous lock. Toutes les modifications sont appliquées en mémoire,
+        validées, puis une seule écriture finale. En cas d'erreur de
+        validation (ex: permissions invalides), AUCUNE modification n'est
+        persistée.
+
+        **Filtres** (au moins un requis) :
+
+        - ``names`` : liste CSV de noms exacts à matcher.
+        - ``name_contains`` : sous-chaîne (case-insensitive).
+          Combinables : un token doit satisfaire ``names`` (si fourni)
+          ET ``name_contains`` (si fourni).
+
+        **Opérations** (au moins une requise, sinon erreur 400) :
+
+        - ``permissions`` : nouvelles permissions à appliquer.
+        - ``email`` : nouvel email.
+        - ``space_ids_add`` / ``space_ids_remove`` : deltas additifs
+          (mêmes règles que ``update_token`` en mode delta).
+
+        ⚠️ Volontairement, ``bulk_update_tokens`` n'expose **pas** le
+        mode remplacement ``space_ids`` (trop dangereux à propager
+        sur N tokens — risque de révocation silencieuse en masse).
+
+        Args:
+            names: Noms exacts à filtrer (CSV).
+            name_contains: Sous-chaîne à filtrer (case-insensitive).
+            permissions: Nouvelles permissions (CSV) à appliquer.
+            email: Nouvel email à appliquer.
+            space_ids_add: Spaces à ajouter (CSV).
+            space_ids_remove: Spaces à retirer (CSV).
+
+        Returns:
+            ``{"status": "ok", "updated": N, "tokens": [{name, hash,
+            before: {...}, after: {...}}], "filters": {...},
+            "operations": {...}}``.
+            Si aucun token ne matche : ``updated=0``, ``tokens=[]``,
+            statut ``ok`` (pas une erreur).
+        """
+        # ─── Validation des filtres ───
+        names_list = [n.strip() for n in (names or "").split(",") if n.strip()]
+        name_contains_norm = (name_contains or "").strip()
+        if not names_list and not name_contains_norm:
+            return {
+                "status": "error",
+                "message": (
+                    "Au moins un filtre requis : `names` (liste exacte) "
+                    "ou `name_contains` (sous-chaîne)."
+                ),
+            }
+
+        # ─── Validation des opérations ───
+        # Note : `space_ids` (remplacement) volontairement absent — voir docstring.
+        op_perm = (permissions or "").strip()
+        op_email = (email or "").strip()
+        add_list = self._parse_csv_spaces(space_ids_add)
+        remove_list = self._parse_csv_spaces(space_ids_remove)
+
+        if not (op_perm or op_email or add_list or remove_list):
+            return {
+                "status": "error",
+                "message": (
+                    "Aucune opération demandée. Fournissez au moins "
+                    "`permissions`, `email`, `space_ids_add` ou `space_ids_remove`."
+                ),
+            }
+
+        # Valider le sucre interdit "*"/"all" dans les deltas (avant lock).
+        mutex_err = self._validate_update_mutex("", space_ids_add, space_ids_remove)
+        if mutex_err:
+            return mutex_err
+
+        # Valider les permissions à plat (avant lock).
+        if op_perm:
+            perm_list = [p.strip() for p in op_perm.split(",") if p.strip()]
+            invalid = [p for p in perm_list if p not in VALID_PERMISSIONS]
+            if invalid:
+                return {
+                    "status": "error",
+                    "message": (
+                        f"Permissions invalides : {invalid}. "
+                        f"Valeurs acceptées : {sorted(VALID_PERMISSIONS)}"
+                    ),
+                }
+        else:
+            perm_list = None  # signal "ne pas toucher"
+
+        # ─── Application sous lock ───
+        needle = name_contains_norm.lower()
+        async with get_lock_manager().tokens:
+            store = await self._load_store()
+
+            # Sélection des tokens matchant les filtres
+            selected: list[TokenInfo] = []
+            for t in store.tokens:
+                if names_list and t.name not in names_list:
+                    continue
+                if needle and needle not in t.name.lower():
+                    continue
+                selected.append(t)
+
+            if not selected:
+                return {
+                    "status": "ok",
+                    "updated": 0,
+                    "tokens": [],
+                    "message": "Aucun token ne correspond aux filtres.",
+                    "filters": {
+                        "names": names_list,
+                        "name_contains": name_contains_norm,
+                    },
+                }
+
+            # Application en mémoire (atomique : aucune écriture S3 tant que
+            # toutes les modifs ne sont pas faites).
+            report: list[dict] = []
+            for t in selected:
+                before_space_ids = list(t.space_ids)
+                before_perms = list(t.permissions)
+                before_email = t.email
+
+                if perm_list is not None:
+                    t.permissions = list(perm_list)
+                if op_email:
+                    t.email = op_email
+
+                added: list[str] = []
+                removed: list[str] = []
+                noop: list[str] = []
+                if add_list or remove_list:
+                    t.space_ids, added, removed, noop = self._apply_space_delta(
+                        t.space_ids, add_list, remove_list
+                    )
+
+                entry: dict = {
+                    "name": t.name,
+                    "hash": t.hash,
+                    "before": {
+                        "space_ids": before_space_ids,
+                        "permissions": before_perms,
+                        "email": before_email,
+                    },
+                    "after": {
+                        "space_ids": list(t.space_ids),
+                        "permissions": list(t.permissions),
+                        "email": t.email,
+                    },
+                }
+                if add_list or remove_list:
+                    entry["space_ids_added"] = added
+                    entry["space_ids_removed"] = removed
+                    if noop:
+                        entry["space_ids_noop"] = noop
+                report.append(entry)
+
+            # Une seule écriture S3 ⇒ atomicité naturelle
+            await self._save_store(store)
+
+        return {
+            "status": "ok",
+            "updated": len(report),
+            "tokens": report,
+            "filters": {
+                "names": names_list,
+                "name_contains": name_contains_norm,
+            },
+            "operations": {
+                "permissions": perm_list,
+                "email": op_email or None,
+                "space_ids_add": add_list,
+                "space_ids_remove": remove_list,
+            },
+        }
 
     async def add_space_to_token(self, token_hash: str, space_id: str) -> dict:
         """
