@@ -15,7 +15,7 @@ Usage :
 import logging
 from functools import lru_cache
 
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 _logger = logging.getLogger("live_mem.config")
@@ -58,6 +58,22 @@ class Settings(BaseSettings):
     )
     llmaas_max_tokens: int = 16384  # Max tokens de SORTIE demandés à l'API
     llmaas_temperature: float = 0.3
+
+    # ─── Proxy HTTP sortant ───────────────────────────────────
+    # Variable custom (pas HTTP_PROXY/HTTPS_PROXY) pour ne pas affecter
+    # toutes les libs Python qui lisent automatiquement les vars d'env OS.
+    # Injecté manuellement dans boto3 (S3) et httpx (LLM).
+    # Non supporté pour les connexions Graph Memory (streamablehttp_client).
+    proxy_url: str | None = None
+
+    @field_validator("proxy_url", mode="before")
+    @classmethod
+    def _normalize_proxy_url(cls, v: str | None) -> str | None:
+        """Normalise proxy_url : strip whitespace, retourne None si vide."""
+        if v is None:
+            return None
+        stripped = str(v).strip()
+        return stripped if stripped else None
 
     # ─── Rules par défaut ─────────────────────────────────────
     # Chemin vers le fichier Markdown utilisé comme rules par défaut
@@ -159,6 +175,13 @@ class Settings(BaseSettings):
         if not (0.0 <= self.llmaas_temperature <= 2.0):
             errors.append(
                 f"LLMAAS_TEMPERATURE={self.llmaas_temperature} out of range [0.0, 2.0]"
+            )
+
+        # Proxy URL format (optionnel — si renseigné doit être une URL valide)
+        if self.proxy_url and not self.proxy_url.startswith(("http://", "https://")):
+            errors.append(
+                f"PROXY_URL must start with http:// or https://, "
+                f"got '{self.proxy_url[:50]}'"
             )
 
         # Response limit

@@ -54,6 +54,15 @@ class StorageService:
         self.bucket = settings.s3_bucket_name
         self._endpoint = settings.s3_endpoint_url
 
+        # ── Proxy HTTP sortant (optionnel) ────────────────────
+        # Utilise PROXY_URL (variable custom) plutôt que HTTP_PROXY/HTTPS_PROXY
+        # pour éviter d'affecter toutes les libs Python qui lisent les vars d'env OS.
+        proxy_url = settings.proxy_url
+        # Format botocore/requests : {"http": url, "https": url}
+        _proxies: dict[str, str] | None = (
+            {"http": proxy_url, "https": proxy_url} if proxy_url else None
+        )
+
         # ── Client SigV2 — pour PUT/GET/DELETE (données) ──────
         # Dell ECS exige SigV2 pour les opérations de données,
         # sinon on obtient XAmzContentSHA256Mismatch.
@@ -62,6 +71,7 @@ class StorageService:
             signature_version="s3",  # SigV2 legacy
             s3={"addressing_style": "path"},  # Path-style obligatoire CT
             retries={"max_attempts": 3, "mode": "adaptive"},
+            **({"proxies": _proxies} if _proxies else {}),
         )
         self._client_v2 = boto3.client(
             "s3",
@@ -82,6 +92,7 @@ class StorageService:
                 "payload_signing_enabled": False,  # Optimisation Dell ECS
             },
             retries={"max_attempts": 3, "mode": "adaptive"},
+            **({"proxies": _proxies} if _proxies else {}),
         )
         self._client_v4 = boto3.client(
             "s3",
@@ -96,6 +107,8 @@ class StorageService:
             self.bucket,
             self._endpoint,
         )
+        if proxy_url:
+            logger.info("StorageService: S3 requests via proxy %s", proxy_url)
 
     # ─────────────────────────────────────────────────────────────
     # Helpers async — wrappent les appels synchrones boto3

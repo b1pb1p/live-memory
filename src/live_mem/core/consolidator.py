@@ -26,6 +26,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
+import httpx
 from openai import AsyncOpenAI
 
 from ..config import get_settings
@@ -118,10 +119,30 @@ class ConsolidatorService:
 
     def __init__(self):
         settings = get_settings()
+
+        # ── Proxy HTTP sortant (optionnel) ────────────────────
+        # Utilise PROXY_URL (variable custom) plutôt que HTTP_PROXY/HTTPS_PROXY
+        # pour éviter d'affecter toutes les libs Python qui lisent les vars d'env OS.
+        # AsyncOpenAI utilise httpx en interne — on passe un client httpx pré-configuré.
+        # Quand http_client est fourni, AsyncOpenAI n'en prend pas ownership :
+        # c'est ConsolidatorService qui gère son cycle de vie (voir close()).
+        proxy_url = settings.proxy_url
+        self._http_client: httpx.AsyncClient | None = (
+            httpx.AsyncClient(
+                proxy=httpx.Proxy(url=proxy_url),
+                timeout=settings.consolidation_timeout,
+            )
+            if proxy_url
+            else None
+        )
+        if self._http_client:
+            logger.info("ConsolidatorService: LLM requests via proxy %s", proxy_url)
+
         self._client = AsyncOpenAI(
             base_url=settings.llmaas_api_url,
             api_key=settings.llmaas_api_key,
             timeout=settings.consolidation_timeout,
+            http_client=self._http_client,
         )
         self._model = settings.llmaas_model
         self._context_window = settings.llmaas_context_window
@@ -1101,6 +1122,18 @@ CONSIGNE : Fusionne ces versions en UNE SEULE version cohérente.
         except Exception as e:
             logger.error("DEDUP merge FAILED: '%s' — %s", heading, str(e))
             return None
+
+    async def close(self) -> None:
+        """
+        Ferme le httpx.AsyncClient injecté, si présent.
+
+        AsyncOpenAI ne prend pas ownership du http_client qu'on lui passe :
+        c'est ConsolidatorService qui est responsable de l'appeler explicitement.
+        À brancher sur le shutdown ASGI (voir close_consolidator_if_initialized).
+        """
+        if self._http_client is not None:
+            await self._http_client.aclose()
+            self._http_client = None
 
     async def test_connection(self) -> dict:
         """Teste la connexion au LLMaaS avec un appel minimal."""
@@ -2125,3 +2158,17 @@ def get_consolidator() -> ConsolidatorService:
     if _consolidator is None:
         _consolidator = ConsolidatorService()
     return _consolidator
+
+
+async def close_consolidator_if_initialized() -> None:
+    """
+    Ferme le ConsolidatorService singleton s'il a été instancié.
+
+    À appeler au shutdown ASGI pour libérer proprement le httpx.AsyncClient
+    injecté dans AsyncOpenAI (quand PROXY_URL est défini).
+    Sans appel explicite, le client resterait ouvert jusqu'à la fin du process.
+    """
+    global _consolidator
+    if _consolidator is not None:
+        await _consolidator.close()
+        _consolidator = None
