@@ -6,7 +6,7 @@
 
 ## Vue d'ensemble
 
-Live Memory expose **39 outils MCP** répartis en 7 catégories :
+Live Memory expose **40 outils MCP** répartis en 7 catégories :
 
 | Catégorie       | Outils | Description                                      |
 | --------------- | ------ | ------------------------------------------------ |

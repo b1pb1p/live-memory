@@ -586,10 +586,77 @@ def show_token_list(result: dict):
             expires,
         )
     console.print(table)
+    # Filtres actifs (issue #13)
+    filters = result.get("filters") or {}
+    if filters:
+        parts = []
+        if filters.get("name_contains"):
+            parts.append(f"name~={filters['name_contains']}")
+        if filters.get("has_space"):
+            parts.append(f"has_space={filters['has_space']}")
+        if filters.get("include_revoked") is False:
+            parts.append("no-revoked")
+        if parts:
+            console.print(f"[dim]🔎 Filtres appliqués : {', '.join(parts)}[/dim]")
     # Aide contextuelle
     console.print(
         "[dim]💡 Copiez le Hash pour : token revoke <hash> · token update <hash> --email user@example.com · token delete <hash>[/dim]"
     )
+
+
+def show_bulk_update_result(result: dict):
+    """Affiche le rapport d'un bulk update (issue #13)."""
+    updated = result.get("updated", 0)
+    tokens = result.get("tokens", [])
+    filters = result.get("filters", {})
+    operations = result.get("operations", {})
+
+    if updated == 0:
+        show_warning(result.get("message", "Aucun token modifié."))
+        if filters:
+            console.print(f"[dim]Filtres : {filters}[/dim]")
+        return
+
+    show_success(f"{updated} token(s) mis à jour")
+
+    # Récapitulatif des opérations demandées
+    op_parts = []
+    if operations.get("space_ids_add"):
+        op_parts.append(f"+spaces={operations['space_ids_add']}")
+    if operations.get("space_ids_remove"):
+        op_parts.append(f"-spaces={operations['space_ids_remove']}")
+    if operations.get("permissions"):
+        op_parts.append(f"perms={operations['permissions']}")
+    if operations.get("email"):
+        op_parts.append(f"email={operations['email']}")
+    if op_parts:
+        console.print(f"[dim]Opérations : {', '.join(op_parts)}[/dim]")
+
+    # Table before/after par token
+    table = Table(title="📋 Détail des modifications", show_header=True)
+    table.add_column("Token", style="cyan bold")
+    table.add_column("Ajoutés", style="green")
+    table.add_column("Retirés", style="red")
+    table.add_column("Spaces avant", style="dim")
+    table.add_column("Spaces après")
+    table.add_column("No-op", style="yellow")
+    for t in tokens:
+        before = t.get("before", {})
+        after = t.get("after", {})
+        added = ", ".join(t.get("space_ids_added", [])) or "—"
+        removed = ", ".join(t.get("space_ids_removed", [])) or "—"
+        noop = ", ".join(t.get("space_ids_noop", [])) or "—"
+        before_spaces = ", ".join(before.get("space_ids", [])) or "(aucun)"
+        after_spaces = ", ".join(after.get("space_ids", [])) or "(aucun)"
+        table.add_row(
+            t.get("name", "?"),
+            added,
+            removed,
+            before_spaces,
+            after_spaces,
+            noop,
+        )
+    console.print(table)
 
 
 # =============================================================================

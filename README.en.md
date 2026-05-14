@@ -118,7 +118,7 @@ Specifically, agents can:
                        │
           ┌────────────┴───────────────────┐
           │   Live Memory MCP (:8002)      │
-          │   39 tools • Auth Bearer       │
+          │   40 tools • Auth Bearer       │
           │   LLM Consolidation            │
           └──────┬──────────┬──────┬───────┘
                  │          │      │
@@ -269,7 +269,7 @@ docker compose logs -f live-mem-service --tail 50  # Logs
 
 ## 🔧 MCP Tools
 
-39 tools exposed via the MCP protocol (Streamable HTTP), divided into 7 categories.
+40 tools exposed via the MCP protocol (Streamable HTTP), divided into 7 categories.
 
 ### System (3 tools)
 
