@@ -716,12 +716,14 @@ async def _handle_token(client, args, json_out):
         ) == "ok" else show_error(result.get("message", "?"))
 
     elif sub == "bulk-update":
-        # Issue #13 : admin_bulk_update_tokens
+        # Issue #13 + review PR #14 : admin_bulk_update_tokens
         bulk_args = {
             "names": "",
             "name_contains": "",
+            "has_space": "",
             "space_ids_add": "",
             "space_ids_remove": "",
+            "include_revoked": False,
         }
         confirm = False
         remaining = args[1:]
@@ -733,6 +735,9 @@ async def _handle_token(client, args, json_out):
                 i += 2
             elif flag in ("--name-contains", "-n") and i + 1 < len(remaining):
                 bulk_args["name_contains"] = remaining[i + 1]
+                i += 2
+            elif flag in ("--has-space", "-s") and i + 1 < len(remaining):
+                bulk_args["has_space"] = remaining[i + 1]
                 i += 2
             elif flag in ("--add-spaces", "-a") and i + 1 < len(remaining):
                 bulk_args["space_ids_add"] = remaining[i + 1]
@@ -750,14 +755,23 @@ async def _handle_token(client, args, json_out):
             elif flag in ("--email", "-e") and i + 1 < len(remaining):
                 bulk_args["email"] = remaining[i + 1]
                 i += 2
+            elif flag == "--include-revoked":
+                bulk_args["include_revoked"] = True
+                i += 1
             elif flag == "--confirm":
                 confirm = True
                 i += 1
             else:
                 i += 1
         # Validations côté shell (le serveur revalide aussi)
-        if not bulk_args["names"] and not bulk_args["name_contains"]:
-            show_error("Au moins un filtre requis : --names ou --name-contains.")
+        if (
+            not bulk_args["names"]
+            and not bulk_args["name_contains"]
+            and not bulk_args["has_space"]
+        ):
+            show_error(
+                "Au moins un filtre requis : --names, --name-contains ou --has-space."
+            )
             return
         if not (
             bulk_args.get("space_ids_add")

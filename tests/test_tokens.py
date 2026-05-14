@@ -1184,3 +1184,451 @@ async def test_bulk_update_combined_filters_AND():
     # Seul agent-a satisfait names ET name_contains
     assert result["updated"] == 1
     assert result["tokens"][0]["name"] == "agent-a"
+
+
+# =============================================================================
+# Tests — Review PR #14 : has_space, include_revoked, audit, cas dégénéré
+# =============================================================================
+
+
+# ─── Point 2 — has_space dans bulk_update_tokens ────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_by_has_space_only():
+    """Filtre `has_space` seul matche les tokens autorisant ce space (review #14)."""
+    svc = TokenService()
+    t1 = _make_token("agent-a", suffix="1" * 64, space_ids=["old-proj", "shared"])
+    t2 = _make_token("agent-b", suffix="2" * 64, space_ids=["old-proj"])
+    t3 = _make_token("other-c", suffix="3" * 64, space_ids=["new-only"])
+    store = TokensStore(tokens=[t1, t2, t3])
+
+    with patch.object(svc, "_load_store", new=AsyncMock(return_value=store)), \
+         patch.object(svc, "_save_store", new=AsyncMock()):
+        result = await svc.bulk_update_tokens(
+            has_space="old-proj", space_ids_remove="old-proj"
+        )
+
+    # Cas d'usage Guillaume : "retirer old-proj de tous les tokens qui l'ont"
+    # en un seul appel (pas 4 aller-retours).
+    assert result["updated"] == 2
+    names = {t["name"] for t in result["tokens"]}
+    assert names == {"agent-a", "agent-b"}
+    # t3 intouché (n'avait pas old-proj)
+    assert t3.space_ids == ["new-only"]
+    # t1 et t2 ont perdu old-proj
+    assert "old-proj" not in t1.space_ids
+    assert "old-proj" not in t2.space_ids
+    # t1 garde "shared" (pas un remplacement aveugle)
+    assert "shared" in t1.space_ids
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_has_space_case_sensitive():
+    """`has_space` est case-SENSITIVE (cohérent avec list_tokens). Contrat doc."""
+    svc = TokenService()
+    t1 = _make_token("a", suffix="1" * 64, space_ids=["Projet-X"])
+    t2 = _make_token("b", suffix="2" * 64, space_ids=["projet-x"])
+    store = TokensStore(tokens=[t1, t2])
+
+    with patch.object(svc, "_load_store", new=AsyncMock(return_value=store)), \
+         patch.object(svc, "_save_store", new=AsyncMock()):
+        result = await svc.bulk_update_tokens(
+            has_space="projet-x", space_ids_add="z"
+        )
+
+    # Seul t2 matche exactement (case-sensitive)
+    assert result["updated"] == 1
+    assert result["tokens"][0]["name"] == "b"
+    # t1 ("Projet-X" majuscule) ne doit PAS avoir reçu "z"
+    assert "z" not in t1.space_ids
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_three_filters_combined_AND():
+    """names + name_contains + has_space sont combinés en AND.
+
+    Piège Guillaume formalisé : un token doit satisfaire les 3 filtres
+    fournis. Sinon il est exclu silencieusement (mais c'est documenté).
+    """
+    svc = TokenService()
+    # Token "parfait" : match les 3 filtres
+    perfect = _make_token(
+        "agent-laptop", suffix="1" * 64, space_ids=["target-space"]
+    )
+    # Match names + name_contains MAIS pas has_space
+    no_space = _make_token(
+        "agent-desktop", suffix="2" * 64, space_ids=["other"]
+    )
+    # Match name_contains + has_space MAIS pas names
+    not_in_names = _make_token(
+        "agent-extra", suffix="3" * 64, space_ids=["target-space"]
+    )
+    # Match names + has_space MAIS pas name_contains
+    not_contains = _make_token(
+        "ops-laptop", suffix="4" * 64, space_ids=["target-space"]
+    )
+    store = TokensStore(tokens=[perfect, no_space, not_in_names, not_contains])
+
+    with patch.object(svc, "_load_store", new=AsyncMock(return_value=store)), \
+         patch.object(svc, "_save_store", new=AsyncMock()):
+        result = await svc.bulk_update_tokens(
+            names="agent-laptop,agent-desktop,ops-laptop",
+            name_contains="agent",
+            has_space="target-space",
+            space_ids_add="new",
+        )
+
+    # SEUL "perfect" satisfait les 3 conditions simultanément
+    assert result["updated"] == 1
+    assert result["tokens"][0]["name"] == "agent-laptop"
+    # Les 3 autres n'ont PAS été touchés (isolation)
+    assert "new" not in no_space.space_ids
+    assert "new" not in not_in_names.space_ids
+    assert "new" not in not_contains.space_ids
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_requires_at_least_one_of_three_filters():
+    """Sans aucun des 3 filtres → erreur (review #14 : has_space compte)."""
+    svc = TokenService()
+    with patch.object(svc, "_load_store", new=AsyncMock(return_value=TokensStore())), \
+         patch.object(svc, "_save_store", new=AsyncMock()):
+        result = await svc.bulk_update_tokens(space_ids_add="x")
+
+    assert result["status"] == "error"
+    # Le message d'erreur doit lister les 3 filtres possibles (UX)
+    assert "names" in result["message"]
+    assert "name_contains" in result["message"]
+    assert "has_space" in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_has_space_only_no_op_when_no_match():
+    """has_space sans aucun match retourne updated=0 sans erreur."""
+    svc = TokenService()
+    t1 = _make_token("a", suffix="1" * 64, space_ids=["other"])
+    store = TokensStore(tokens=[t1])
+
+    save_mock = AsyncMock()
+    with patch.object(svc, "_load_store", new=AsyncMock(return_value=store)), \
+         patch.object(svc, "_save_store", new=save_mock):
+        result = await svc.bulk_update_tokens(
+            has_space="ghost-space", space_ids_add="z"
+        )
+
+    assert result["status"] == "ok"
+    assert result["updated"] == 0
+    # Aucune écriture si rien à faire (atomicité)
+    save_mock.assert_not_called()
+
+
+# ─── Point 3 — include_revoked sur bulk_update_tokens ───────────────────────
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_excludes_revoked_by_default():
+    """Défaut include_revoked=False : les révoqués matchés sont sautés.
+
+    Asymétrie volontaire avec list_tokens (défaut True). Sémantique :
+    on observe (list) vs on mute (bulk_update).
+    """
+    svc = TokenService()
+    active = _make_token("agent-active", suffix="1" * 64, space_ids=["s1"])
+    dead = _make_token(
+        "agent-dead", suffix="2" * 64, space_ids=["s1"], revoked=True
+    )
+    store = TokensStore(tokens=[active, dead])
+
+    with patch.object(svc, "_load_store", new=AsyncMock(return_value=store)), \
+         patch.object(svc, "_save_store", new=AsyncMock()):
+        # Pas de include_revoked → défaut False
+        result = await svc.bulk_update_tokens(
+            name_contains="agent", space_ids_add="new"
+        )
+
+    # Le révoqué N'a PAS été touché
+    assert "new" not in dead.space_ids
+    # L'actif l'a été
+    assert "new" in active.space_ids
+    assert result["updated"] == 1
+    # Le révoqué doit apparaître dans skipped_revoked
+    assert "skipped_revoked" in result
+    assert len(result["skipped_revoked"]) == 1
+    assert result["skipped_revoked"][0]["name"] == "agent-dead"
+    assert result["skipped_revoked"][0]["hash"] == dead.hash
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_include_revoked_true_modifies_them():
+    """Opt-in explicite : include_revoked=True modifie aussi les révoqués."""
+    svc = TokenService()
+    active = _make_token("agent-active", suffix="1" * 64, space_ids=["s1"])
+    dead = _make_token(
+        "agent-dead", suffix="2" * 64, space_ids=["s1"], revoked=True
+    )
+    store = TokensStore(tokens=[active, dead])
+
+    with patch.object(svc, "_load_store", new=AsyncMock(return_value=store)), \
+         patch.object(svc, "_save_store", new=AsyncMock()):
+        result = await svc.bulk_update_tokens(
+            name_contains="agent",
+            space_ids_add="reactivation",
+            include_revoked=True,
+        )
+
+    # Les DEUX ont été touchés (opt-in)
+    assert "reactivation" in active.space_ids
+    assert "reactivation" in dead.space_ids
+    assert result["updated"] == 2
+    # Et `skipped_revoked` est absent ou vide (rien sauté)
+    assert "skipped_revoked" not in result or result.get("skipped_revoked") == []
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_filters_block_reflects_all_4_filters():
+    """Le bloc filters retourné inclut TOUS les filtres pour traçabilité audit.
+
+    Anti-régression renforcée (vs version v1 qui ne vérifiait qu'un champ) :
+    si quelqu'un retire un filtre du `filters_block` (ex: oublie `has_space`
+    après refactor), un opérateur perd la trace de ce qui a été filtré.
+    """
+    svc = TokenService()
+    t1 = _make_token("agent-a", suffix="1" * 64, space_ids=["proj-x"])
+    store = TokensStore(tokens=[t1])
+
+    with patch.object(svc, "_load_store", new=AsyncMock(return_value=store)), \
+         patch.object(svc, "_save_store", new=AsyncMock()):
+        result = await svc.bulk_update_tokens(
+            names="agent-a",
+            name_contains="agent",
+            has_space="proj-x",
+            space_ids_add="new",
+            include_revoked=True,
+        )
+
+    f = result["filters"]
+    # Les 4 champs doivent être présents ET refléter exactement l'entrée
+    assert f["names"] == ["agent-a"]
+    assert f["name_contains"] == "agent"
+    assert f["has_space"] == "proj-x"
+    assert f["include_revoked"] is True
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_only_revoked_matched_returns_skipped_zero_updated():
+    """Si TOUS les matches sont révoqués + include_revoked=False : updated=0 mais skipped_revoked non vide.
+
+    L'opérateur voit clairement qu'il y a des cibles révoquées, mais sans
+    rien modifier. Il peut décider de relancer avec --include-revoked.
+    """
+    svc = TokenService()
+    dead1 = _make_token(
+        "agent-dead-1", suffix="1" * 64, space_ids=["s1"], revoked=True
+    )
+    dead2 = _make_token(
+        "agent-dead-2", suffix="2" * 64, space_ids=["s1"], revoked=True
+    )
+    store = TokensStore(tokens=[dead1, dead2])
+
+    save_mock = AsyncMock()
+    with patch.object(svc, "_load_store", new=AsyncMock(return_value=store)), \
+         patch.object(svc, "_save_store", new=save_mock):
+        result = await svc.bulk_update_tokens(
+            name_contains="agent", space_ids_add="new"
+        )
+
+    assert result["status"] == "ok"
+    assert result["updated"] == 0
+    assert result["tokens"] == []
+    assert len(result["skipped_revoked"]) == 2
+    # Message d'info utile pour l'opérateur
+    assert "révoqué" in result["message"].lower()
+    assert "include_revoked" in result["message"].lower()
+    # Aucune écriture (rien à persister)
+    save_mock.assert_not_called()
+    # Vérifier que les révoqués n'ont pas été mutés
+    assert "new" not in dead1.space_ids
+    assert "new" not in dead2.space_ids
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_skipped_revoked_carries_hash_for_audit():
+    """skipped_revoked contient le hash COMPLET pour traçabilité d'audit."""
+    svc = TokenService()
+    dead = _make_token(
+        "agent-dead", suffix="ab" * 32, space_ids=["s1"], revoked=True
+    )
+    active = _make_token("agent-active", suffix="cd" * 32, space_ids=["s1"])
+    store = TokensStore(tokens=[dead, active])
+
+    with patch.object(svc, "_load_store", new=AsyncMock(return_value=store)), \
+         patch.object(svc, "_save_store", new=AsyncMock()):
+        result = await svc.bulk_update_tokens(
+            name_contains="agent", space_ids_add="new"
+        )
+
+    entry = result["skipped_revoked"][0]
+    # Hash complet avec préfixe sha256: (pas un préfixe tronqué)
+    assert entry["hash"].startswith("sha256:")
+    assert len(entry["hash"]) == len("sha256:") + 64
+    assert entry["name"] == "agent-dead"
+
+
+# ─── Point 4 — Audit logging ────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_emits_audit_log_on_success(caplog):
+    """Une opération réussie émet un événement structuré sur le logger audit.
+
+    Anti-régression : si un futur refactor oublie le logging, l'opérateur
+    perd la rejouabilité des modifications de masse.
+    """
+    import logging
+    svc = TokenService()
+    t1 = _make_token("agent-a", suffix="aa" * 32, space_ids=["s1"])
+    store = TokensStore(tokens=[t1])
+
+    with caplog.at_level(logging.INFO, logger="live_mem.audit"), \
+         patch.object(svc, "_load_store", new=AsyncMock(return_value=store)), \
+         patch.object(svc, "_save_store", new=AsyncMock()):
+        result = await svc.bulk_update_tokens(
+            name_contains="agent",
+            space_ids_add="new-space",
+        )
+
+    assert result["status"] == "ok"
+    # Au moins un record audit doit avoir été émis
+    audit_records = [
+        r for r in caplog.records if r.name == "live_mem.audit"
+    ]
+    assert len(audit_records) >= 1, "Aucun log audit émis sur bulk_update_tokens"
+
+    # Le record doit être un JSON exploitable
+    import json as _json
+    payload = _json.loads(audit_records[-1].message)
+    assert payload["event"] == "bulk_update_tokens"
+    assert payload["updated"] == 1
+    assert payload["filters"]["name_contains"] == "agent"
+    assert payload["operations"]["space_ids_add"] == ["new-space"]
+    # Hashes propagés pour rejouabilité
+    assert payload["token_hashes"] == [t1.hash]
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_no_audit_on_validation_error(caplog):
+    """Les échecs de validation ne doivent PAS polluer l'audit (déjà retournés au client)."""
+    import logging
+    svc = TokenService()
+
+    with caplog.at_level(logging.INFO, logger="live_mem.audit"), \
+         patch.object(svc, "_load_store", new=AsyncMock(return_value=TokensStore())), \
+         patch.object(svc, "_save_store", new=AsyncMock()):
+        # Erreur : aucun filtre
+        result = await svc.bulk_update_tokens(space_ids_add="x")
+
+    assert result["status"] == "error"
+    audit_records = [
+        r for r in caplog.records
+        if r.name == "live_mem.audit" and "bulk_update_tokens" in r.message
+    ]
+    assert audit_records == [], (
+        "Un échec de validation ne doit pas produire de log audit "
+        "(le client a déjà l'erreur retournée)"
+    )
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_audit_records_skipped_revoked_count(caplog):
+    """L'audit doit tracer le nombre de révoqués sautés (visibilité gouvernance)."""
+    import logging
+    svc = TokenService()
+    active = _make_token("agent-active", suffix="11" * 32, space_ids=["s1"])
+    dead = _make_token(
+        "agent-dead", suffix="22" * 32, space_ids=["s1"], revoked=True
+    )
+    store = TokensStore(tokens=[active, dead])
+
+    with caplog.at_level(logging.INFO, logger="live_mem.audit"), \
+         patch.object(svc, "_load_store", new=AsyncMock(return_value=store)), \
+         patch.object(svc, "_save_store", new=AsyncMock()):
+        await svc.bulk_update_tokens(
+            name_contains="agent", space_ids_add="new"
+        )
+
+    import json as _json
+    records = [r for r in caplog.records if r.name == "live_mem.audit"]
+    payload = _json.loads(records[-1].message)
+    assert payload["skipped_revoked_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_no_audit_when_save_store_fails(caplog):
+    """Si `_save_store` lève une exception, aucun log audit ne doit être émis.
+
+    Garantie clé du contrat "on n'audite que les opérations PERSISTÉES".
+    Détecte le futur refactor qui mettrait l'appel `_emit_bulk_update_audit`
+    dans un `finally` ou avant `_save_store` (par excès de zèle "log
+    everything") — ce qui produirait des logs audit menteurs lors d'un
+    échec S3 transitoire (réseau, throttling, perte du bucket).
+    """
+    import logging
+    svc = TokenService()
+    t1 = _make_token("agent-a", suffix="aa" * 32, space_ids=["s1"])
+    store = TokensStore(tokens=[t1])
+
+    # _save_store qui lève : simule un échec S3 (network, throttle, etc.)
+    failing_save = AsyncMock(side_effect=RuntimeError("S3 unavailable"))
+
+    with caplog.at_level(logging.INFO, logger="live_mem.audit"), \
+         patch.object(svc, "_load_store", new=AsyncMock(return_value=store)), \
+         patch.object(svc, "_save_store", new=failing_save):
+        # L'exception doit remonter (pas d'avalage silencieux du runtime)
+        with pytest.raises(RuntimeError, match="S3 unavailable"):
+            await svc.bulk_update_tokens(
+                name_contains="agent", space_ids_add="new-space"
+            )
+
+    # Vérification critique : AUCUN log audit n'a été émis
+    # parce que l'opération n'a PAS été persistée.
+    audit_records = [
+        r for r in caplog.records
+        if r.name == "live_mem.audit" and "bulk_update_tokens" in r.message
+    ]
+    assert audit_records == [], (
+        "Un échec de _save_store ne doit PAS produire de log audit menteur "
+        "(l'opération n'a pas été persistée, donc rien à auditer)."
+    )
+    # _save_store a bien été appelé une fois (l'erreur vient de là)
+    failing_save.assert_called_once()
+
+
+# ─── Bonus FYI — Cas dégénéré _apply_space_delta(_add=X, _remove=X) ──────────
+
+
+@pytest.mark.parametrize(
+    "current,to_add,to_remove,expected_final",
+    [
+        # Cas dégénéré classique : remove X puis add X → X présent en queue
+        # current=["a","b","x"], remove "x" → ["a","b"], add "x" → ["a","b","x"]
+        (["a", "b", "x"], ["x"], ["x"], ["a", "b", "x"]),
+        # X absent au départ : remove (noop) puis add → X présent en queue
+        # current=["a","b"], remove "x" → noop ["a","b"], add "x" → ["a","b","x"]
+        (["a", "b"], ["x"], ["x"], ["a", "b", "x"]),
+        # Cas où plusieurs sont à la fois add et remove
+        # current=["a","y"], remove "x" noop puis "y" → ["a"], add "x" puis "y" → ["a","x","y"]
+        (["a", "y"], ["x", "y"], ["x", "y"], ["a", "x", "y"]),
+    ],
+)
+def test_apply_space_delta_degenerate_add_and_remove_same(
+    current, to_add, to_remove, expected_final
+):
+    """Cas dégénéré : un space dans `_add` ET `_remove` → remove appliqué AVANT add.
+
+    Effet net : X est présent en queue de liste. L'ordre relatif final
+    suit l'ordre de la liste `to_add` (pas l'ordre original de `current`).
+    Comportement documenté mais non évident à la lecture rapide (review #14 FYI).
+    """
+    new, _, _, _ = TokenService._apply_space_delta(current, to_add, to_remove)
+    assert new == expected_final

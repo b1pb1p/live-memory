@@ -415,7 +415,8 @@ def register(mcp: FastMCP) -> int:
                 description=(
                     "Liste CSV de noms de tokens exacts à matcher "
                     "(ex: 'agent-laptop,agent-desktop,agent-ci'). "
-                    "Combinable avec `name_contains`. Au moins un des deux requis."
+                    "Combinable en AND avec `name_contains` et `has_space`. "
+                    "Au moins un des trois filtres est requis."
                 ),
             ),
         ] = "",
@@ -424,9 +425,22 @@ def register(mcp: FastMCP) -> int:
             Field(
                 default="",
                 description=(
-                    "Sous-chaîne (case-insensitive) à matcher dans le nom "
-                    "des tokens (ex: 'agent'). Combinable avec `names`. "
-                    "Au moins un filtre requis."
+                    "Sous-chaîne (case-INSENSITIVE) à matcher dans le nom "
+                    "des tokens (ex: 'agent'). Combinable en AND avec `names` "
+                    "et `has_space`. Au moins un filtre requis."
+                ),
+            ),
+        ] = "",
+        has_space: Annotated[
+            str,
+            Field(
+                default="",
+                description=(
+                    "Filtre les tokens dont `space_ids` contient ce `space_id` "
+                    "(match exact, case-SENSITIVE — cohérent avec `admin_list_tokens`). "
+                    "Cas d'usage typique : retirer un space obsolète de tous les "
+                    "tokens qui l'ont, en un seul appel. Combinable en AND. "
+                    "(review PR #14, point #2)"
                 ),
             ),
         ] = "",
@@ -466,6 +480,21 @@ def register(mcp: FastMCP) -> int:
                 ),
             ),
         ] = "",
+        include_revoked: Annotated[
+            bool,
+            Field(
+                default=False,
+                description=(
+                    "Inclure les tokens révoqués dans la sélection. "
+                    "Défaut FALSE — asymétrie volontaire avec `admin_list_tokens` "
+                    "(défaut True) car la sémantique diffère : on MUTE ici, on "
+                    "observe là-bas. Modifier un token révoqué peut créer des "
+                    "permissions fantômes en cas de ré-activation. Les révoqués "
+                    "matchés mais sautés sont listés dans `skipped_revoked`. "
+                    "(review PR #14, point #3)"
+                ),
+            ),
+        ] = False,
     ) -> dict:
         """
         Met à jour plusieurs tokens en une seule opération (issue #13).
@@ -480,22 +509,34 @@ def register(mcp: FastMCP) -> int:
         exposé pour les `space_ids`.
 
         **Atomicité** : `tokens.json` est un fichier S3 unique sauvé d'un
-        bloc sous lock. Validation et application en mémoire, puis une seule
-        écriture finale. En cas d'erreur, aucune modification persistée.
+        bloc sous lock asyncio. Validation et application en mémoire, puis
+        une seule écriture finale. En cas d'erreur, aucune modification
+        persistée. Atomique au sein d'une instance MCP — un déploiement
+        HA multi-instances nécessiterait un verrou externe (non implémenté).
 
-        Filtres (au moins un requis) :
+        **Filtres** (au moins un de `names`/`name_contains`/`has_space` requis) :
             - `names` : liste exacte (CSV).
             - `name_contains` : sous-chaîne (case-insensitive).
+            - `has_space` : space_id présent dans `token.space_ids` (case-sensitive).
 
-        Opérations (au moins une requise) :
+        ⚠️ **Combinaison AND** : tous les filtres fournis doivent être
+        satisfaits par chaque token. Pour OR, faites plusieurs appels.
+
+        **Filtre sécurité** : `include_revoked=False` par défaut — les
+        tokens révoqués sont sautés et listés dans `skipped_revoked`.
+
+        **Opérations** (au moins une requise) :
             - `permissions`, `email` : appliqués à tous les tokens matchés.
             - `space_ids_add`, `space_ids_remove` : deltas additifs idempotents.
+
+        **Audit** : un événement structuré est émis sur le logger
+        `live_mem.audit` après l'écriture S3 (point #4 review PR #14).
 
         Returns:
             ``{"status": "ok", "updated": N, "tokens": [{name, hash,
             before: {...}, after: {...}, space_ids_added: [...], ...}],
-            "filters": {...}, "operations": {...}}``.
-            Si aucun token ne matche : `updated=0`, statut `ok` (pas une erreur).
+            "skipped_revoked": [...], "filters": {...}, "operations": {...}}``.
+            Si aucun token actif ne matche : `updated=0`, statut `ok`.
         """
         from ..auth.context import check_admin_permission
         from ..core.tokens import get_token_service
@@ -508,10 +549,12 @@ def register(mcp: FastMCP) -> int:
             return await get_token_service().bulk_update_tokens(
                 names=names,
                 name_contains=name_contains,
+                has_space=has_space,
                 permissions=permissions,
                 email=email,
                 space_ids_add=space_ids_add,
                 space_ids_remove=space_ids_remove,
+                include_revoked=include_revoked,
             )
         except Exception as e:
             from ..auth.context import safe_error

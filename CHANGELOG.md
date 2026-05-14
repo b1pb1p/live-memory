@@ -7,6 +7,67 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
 ## [1.8.0] — 2026-05-11
 
+### Review PR #14 — second tour (2026-05-13)
+
+Corrections apportées aux 4 points soulevés par Guillaume Lesur (`b1pb1p`) le 12/05 sur la PR #14 :
+
+#### 1. Documentation explicite AND vs OR
+- Toutes les docstrings (serveur, MCP tool, CLI Click `--help`) clarifient maintenant que **les filtres de `admin_bulk_update_tokens` sont combinés en AND**. Le piège `names="a,b,c" + name_contains="agent"` (exclusion silencieuse d'entrées qui ne matchent qu'un seul filtre) est désormais documenté à chaque niveau.
+
+#### 2. Nouveau filtre `has_space` dans `admin_bulk_update_tokens`
+- Match exact, case-**sensitive** (cohérent avec `admin_list_tokens`). Asymétrie volontaire vs `name_contains` (case-insensitive) : les noms sont libres, les `space_ids` sont des identifiants techniques.
+- Cas d'usage cible : *"retirer `old-project` de tous les tokens qui l'ont"* en un seul appel, là où il fallait avant `list_tokens(has_space=…)` → parser → reconstruire `names=…` → `bulk_update`.
+- Combinable en AND avec `names` et `name_contains`. **Au moins un** des trois filtres reste requis.
+- CLI/shell : nouveau flag `--has-space` / `-s` sur `token bulk-update`.
+
+#### 3. `include_revoked=False` par défaut dans `admin_bulk_update_tokens`
+- **Asymétrie volontaire** avec `admin_list_tokens` (qui reste à `True` pour rétrocompat). Justification : on **observe** vs on **mute**. Modifier un token révoqué n'a aucun effet pratique mais peut créer des permissions fantômes en cas de ré-activation manuelle.
+- Les tokens révoqués matchés par les filtres mais sautés sont retournés dans un nouveau champ **`skipped_revoked: [{name, hash}, …]`** — l'opérateur voit ce qu'il aurait pu rater.
+- Opt-in pour modifier les révoqués : `include_revoked=True` (CLI : `--include-revoked`).
+- Cas particulier : si TOUS les matches sont révoqués, le retour est `status=ok, updated=0, skipped_revoked=[…]` avec un message d'info explicite suggérant `--include-revoked`.
+
+#### 4. Audit logging structuré
+- Nouveau helper `_emit_bulk_update_audit()` qui émet un événement JSON sur le logger **`live_mem.audit`** (déjà utilisé par `AuditMiddleware`) **après** `_save_store` — uniquement pour les opérations effectivement persistées (les échecs de validation ne polluent pas l'audit).
+- Contenu de l'event : `event=bulk_update_tokens`, `request_id` (depuis `ContextVar`), `caller` (`client_name` du token appelant), `filters`, `operations`, `updated`, `token_hashes` (liste complète des hash impactés), `skipped_revoked_count`.
+- Permet la rejouabilité et l'audit a posteriori même si le retour MCP est perdu côté client.
+
+#### Bonus FYI (non bloquants chez Guillaume)
+- **Cas dégénéré `_add=X, _remove=X`** : test paramétrique explicite ajouté pour documenter que l'ordre `_remove` avant `_add` produit `X` présent en queue de liste finale (effet net intuitif).
+- **Lock mono-process** : docstring de `bulk_update_tokens` précise désormais que l'atomicité est garantie *au sein d'une instance MCP*, et qu'un déploiement HA multi-instances nécessiterait un verrou externe (Redis/etcd, non implémenté).
+- **Asymétrie case-sensitivity** : justification documentée dans les docstrings (noms libres → case-insensitive, identifiants techniques → case-sensitive).
+
+#### Tests anti-régression ajoutés (+16, total `test_tokens.py` : 86 PASS)
+| Test | Cible |
+|------|-------|
+| `test_bulk_update_by_has_space_only` | Cas d'usage Guillaume (retrait `old-proj` en un appel) |
+| `test_bulk_update_has_space_case_sensitive` | Contrat case-sensitivity documenté |
+| `test_bulk_update_three_filters_combined_AND` | AND-combinaison sur les 3 filtres simultanés |
+| `test_bulk_update_requires_at_least_one_of_three_filters` | Message d'erreur cite les 3 filtres |
+| `test_bulk_update_has_space_only_no_op_when_no_match` | Atomicité (no save_store si 0 match) |
+| `test_bulk_update_excludes_revoked_by_default` | Asymétrie include_revoked False par défaut |
+| `test_bulk_update_include_revoked_true_modifies_them` | Opt-in fonctionne |
+| `test_bulk_update_filters_block_reflects_include_revoked` | Traçabilité dans la réponse |
+| `test_bulk_update_only_revoked_matched_returns_skipped_zero_updated` | Cas tout révoqué — message UX |
+| `test_bulk_update_skipped_revoked_carries_hash_for_audit` | Hash complet propagé |
+| `test_bulk_update_emits_audit_log_on_success` | Anti-régression : log audit émis |
+| `test_bulk_update_no_audit_on_validation_error` | Échec validation ≠ audit |
+| `test_bulk_update_audit_records_skipped_revoked_count` | Tracabilité skipped_revoked dans audit |
+| `test_apply_space_delta_degenerate_add_and_remove_same[×3]` | Cas dégénéré paramétrique |
+
+**Suite complète : 152/152 PASS** (vs 136 avant ; +16 nouveaux tests, 0 régression).
+
+#### Fichiers modifiés (review PR #14)
+| Fichier | Changements |
+|---------|-------------|
+| `src/live_mem/core/tokens.py` | Import `json`/`logging` + `_audit_logger`. Refonte de `bulk_update_tokens` : nouveaux params `has_space` + `include_revoked`, sélection AND-combinée, gestion `skipped_revoked`, appel audit après save_store. Nouveau helper `_emit_bulk_update_audit()`. |
+| `src/live_mem/tools/admin.py` | `admin_bulk_update_tokens` : nouveaux `Field` MCP pour `has_space` et `include_revoked` avec descriptions documentant l'asymétrie. Docstring refondue (AND, asymétries, audit). |
+| `scripts/cli/commands.py` | `token bulk-update` : nouveaux flags `--has-space`/`-s` et `--include-revoked`. Validation client mise à jour (3 filtres acceptés). Dry-run client passe le filtre `has_space` et respecte `include_revoked`. |
+| `scripts/cli/shell.py` | Handler `token bulk-update` : parsing des nouveaux flags `--has-space`/`--include-revoked`. Validation 3-filtres. Autocomplétion enrichie. |
+| `tests/test_tokens.py` | +16 tests anti-complaisance (voir tableau ci-dessus). |
+| `CHANGELOG.md` | Ce bloc. |
+
+---
+
 ### Ajouté (issue #13 — workflow admin tokens)
 
 - **`admin_update_token` : mode delta additif** — Nouveaux paramètres `space_ids_add` et `space_ids_remove` (CSV) pour ajouter/retirer des spaces à un token **sans avoir à reconstruire la liste complète**. Élimine la classe de bugs "révocation silencieuse par remplacement" : ajouter un nouveau space à un token qui en a déjà 7 ne demande plus de relire les 7 actuels. Idempotent (no-op si déjà présent/absent). `_remove` est appliqué avant `_add` (sémantique documentée).

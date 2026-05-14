@@ -793,6 +793,16 @@ def token_list_cmd(ctx, name_contains, has_space, no_revoked, jflag):
     help="Sous-chaîne dans le nom (case-insensitive).",
 )
 @click.option(
+    "--has-space",
+    "-s",
+    default="",
+    help=(
+        "Filtre les tokens dont space_ids contient ce space_id "
+        "(match exact, case-sensitive). Idéal pour 'retirer old-project "
+        "de tous les tokens qui l'ont'. (review PR #14)"
+    ),
+)
+@click.option(
     "--add-spaces",
     "-a",
     default="",
@@ -818,6 +828,16 @@ def token_list_cmd(ctx, name_contains, has_space, no_revoked, jflag):
     help="Nouvel email à appliquer à tous les tokens sélectionnés.",
 )
 @click.option(
+    "--include-revoked",
+    is_flag=True,
+    default=False,
+    help=(
+        "Inclure les tokens révoqués (défaut: sautés). Asymétrie volontaire "
+        "avec 'token list' (qui les inclut par défaut) — on observe vs on "
+        "mute. (review PR #14)"
+    ),
+)
+@click.option(
     "--confirm",
     is_flag=True,
     default=False,
@@ -829,34 +849,47 @@ def token_bulk_update_cmd(
     ctx,
     names,
     name_contains,
+    has_space,
     add_spaces,
     remove_spaces,
     permissions,
     email,
+    include_revoked,
     confirm,
     jflag,
 ):
     """🔁 Mettre à jour plusieurs tokens en une seule opération (issue #13).
 
     \b
-    Filtres (au moins un requis) : --names ou --name-contains.
-    Opérations (au moins une requise) : --add-spaces, --remove-spaces,
-    --permissions, --email.
+    ⚠️ FILTRES COMBINÉS EN AND : un token doit satisfaire CHACUN des
+    filtres fournis (et non au moins un). Pour une logique OR, faites
+    plusieurs appels.
+    \b
+    Filtres (au moins un requis) :
+      --names, --name-contains, --has-space
+    Opérations (au moins une requise) :
+      --add-spaces, --remove-spaces, --permissions, --email
 
     \b
     Exemples :
       # Ajouter "new-project" à tous les agents
       token bulk-update --name-contains agent --add-spaces new-project --confirm
 
+      # Retirer "old-project" de TOUS les tokens qui l'ont (cas use Guillaume)
+      token bulk-update --has-space old-project --remove-spaces old-project --confirm
+
       # Migrer 3 tokens explicites
       token bulk-update --names "a,b,c" -a new-space -r old-space --confirm
+
+      # Modifier aussi les tokens révoqués (opt-in)
+      token bulk-update --name-contains old-agent --remove-spaces dead --include-revoked --confirm
 
       # Dry-run (par défaut sans --confirm) : affiche ce qui serait fait
       token bulk-update --name-contains agent --add-spaces new-project
     """
-    if not names and not name_contains:
+    if not names and not name_contains and not has_space:
         show_error(
-            "Au moins un filtre requis : --names ou --name-contains. "
+            "Au moins un filtre requis : --names, --name-contains ou --has-space. "
             "Voir 'token bulk-update --help' pour les exemples."
         )
         return
@@ -872,14 +905,14 @@ def token_bulk_update_cmd(
             "⚠️  Dry-run : aucune modification ne sera appliquée. "
             "Ajoutez --confirm pour exécuter."
         )
-        # En dry-run, on simule en faisant un list filtré pour montrer les cibles
+        # En dry-run, on simule en faisant un list filtré pour montrer les cibles.
+        # On reproduit la sémantique serveur (AND-combinaison + include_revoked
+        # respecté) — list_tokens ne filtre pas par 'names', on le rejoue ici.
         list_args = {
             "name_contains": name_contains,
-            "has_space": "",
-            "include_revoked": False,  # bulk update ignore généralement les révoqués matchés
+            "has_space": has_space,
+            "include_revoked": include_revoked,
         }
-        # Note : le serveur ne filtre pas par "names" — on doit refaire le filtre côté client
-        # pour l'affichage. C'est OK car c'est juste un aperçu.
         names_set = {n.strip() for n in names.split(",") if n.strip()}
 
         async def _dry_run():
@@ -900,8 +933,11 @@ def token_bulk_update_cmd(
                     f"[bold]Cibles potentielles ({len(tokens)} token(s)) :[/bold]"
                 )
                 for t in tokens:
+                    revoked_tag = (
+                        " [red](révoqué)[/red]" if t.get("revoked") else ""
+                    )
                     console.print(
-                        f"  • [cyan]{t['name']}[/cyan]  "
+                        f"  • [cyan]{t['name']}[/cyan]{revoked_tag}  "
                         f"spaces={t.get('space_ids', [])}  "
                         f"perms={t.get('permissions', [])}"
                     )
@@ -917,8 +953,10 @@ def token_bulk_update_cmd(
     args = {
         "names": names,
         "name_contains": name_contains,
+        "has_space": has_space,
         "space_ids_add": add_spaces,
         "space_ids_remove": remove_spaces,
+        "include_revoked": include_revoked,
     }
     if permissions:
         args["permissions"] = permissions
