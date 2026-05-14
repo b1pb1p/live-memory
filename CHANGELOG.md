@@ -5,7 +5,7 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
 ---
 
-## [Unreleased]
+## [1.8.1] — 2026-05-14
 
 ### Ajouté
 - **Support proxy HTTP sortant (`PROXY_URL`)** — Nouvelle variable d'environnement optionnelle pour router les appels sortants (S3 et LLM) via un proxy HTTP. Utilise une variable custom (`PROXY_URL`) plutôt que `HTTP_PROXY`/`HTTPS_PROXY` pour ne pas affecter les autres bibliothèques Python qui lisent automatiquement les variables d'environnement OS.
