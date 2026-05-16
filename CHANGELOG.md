@@ -5,6 +5,25 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
 ---
 
+## [Unreleased]
+
+### Ajouté
+- **Mode de signature S3 configurable (`S3_SIGNATURE_MODE`)** — Nouvelle variable d'environnement permettant de choisir entre :
+  - `dual` (défaut, comportement actuel) : SigV2 pour PUT/GET/DELETE/COPY + SigV4 pour HEAD/LIST. Requis pour Dell ECS Cloud Temple.
+  - `sigv4` : SigV4 pour toutes les opérations. Compatible MinIO, AWS S3 et autres providers S3-compatibles modernes (SigV2 est déprécié AWS depuis 2018 et non supporté par MinIO).
+  - Strictement rétrocompatible : sans changement de `.env`, le comportement Dell ECS Cloud Temple est conservé.
+  - Validation au démarrage : valeurs acceptées `dual` ou `sigv4` uniquement.
+
+### Fichiers modifiés
+| Fichier | Changements |
+| --- | --- |
+| `src/live_mem/config.py` | Nouveau champ `s3_signature_mode: str = "dual"` + validation `_validate_config` |
+| `src/live_mem/core/storage.py` | Refactor avec `_client_data` / `_client_meta`. En mode `dual` : SigV2 (data) + SigV4 (meta), identique à v1.8.1. En mode `sigv4` : un seul client SigV4 partagé. |
+| `.env.example` | Documentation de la nouvelle variable + bloc S3 mis à jour pour mentionner les providers non Cloud Temple |
+| `tests/test_config.py` | Nouvelle classe `TestS3SignatureMode` (4 tests) + ajout du champ dans `_make_settings` |
+
+---
+
 ## [1.8.1] — 2026-05-14
 
 ### Ajouté
